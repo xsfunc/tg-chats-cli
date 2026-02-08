@@ -6,6 +6,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
+// MessageModel displays a simple message with title, body, and footer.
 type MessageModel struct {
 	title    string
 	body     string
@@ -14,6 +15,7 @@ type MessageModel struct {
 	done     bool
 }
 
+// NewMessageModel creates a new message display.
 func NewMessageModel(title, body, footer string) MessageModel {
 	if footer == "" {
 		footer = "Press Enter to continue."
@@ -45,16 +47,19 @@ func (m MessageModel) View() string {
 	if m.quitting {
 		return ""
 	}
+
 	var b strings.Builder
+
 	if m.title != "" {
-		b.WriteString(m.title)
+		b.WriteString(titleStyle.Render(m.title))
 		b.WriteString("\n\n")
 	}
 	if m.body != "" {
-		b.WriteString(m.body)
+		b.WriteString(infoStyle.Render(m.body))
 		b.WriteString("\n\n")
 	}
-	b.WriteString(m.footer)
+	b.WriteString(helpStyle.Render(m.footer))
+
 	return b.String()
 }
 

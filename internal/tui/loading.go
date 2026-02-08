@@ -8,19 +8,17 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var (
-	loadingTitleStyle = lipgloss.NewStyle().MarginLeft(2).Bold(true)
-	loadingInfoStyle  = lipgloss.NewStyle().MarginLeft(4)
-)
-
+// LoadingModel shows a spinner with a message while loading.
 type LoadingModel struct {
 	message string
 	spinner spinner.Model
 }
 
+// NewLoadingModel creates a new loading indicator.
 func NewLoadingModel(message string) LoadingModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(colorPrimary)
 	return LoadingModel{message: message, spinner: s}
 }
 
@@ -35,7 +33,7 @@ func (m LoadingModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 }
 
 func (m LoadingModel) View() string {
-	header := loadingTitleStyle.Render(m.message)
-	status := loadingInfoStyle.Render(fmt.Sprintf("%s working...", m.spinner.View()))
+	header := titleStyle.Render(m.message)
+	status := infoStyle.Render(fmt.Sprintf("%s working...", m.spinner.View()))
 	return lipgloss.JoinVertical(lipgloss.Left, header, status)
 }

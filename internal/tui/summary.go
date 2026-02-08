@@ -17,6 +17,7 @@ type SummaryModel struct {
 	done       bool
 }
 
+// NewSummaryModel creates a new export summary display.
 func NewSummaryModel(title, filename string, count int, markStatus string) SummaryModel {
 	return SummaryModel{
 		title:      title,
@@ -50,17 +51,28 @@ func (m SummaryModel) View() string {
 	if m.quitting {
 		return ""
 	}
+
 	var b strings.Builder
-	b.WriteString("Export complete\n\n")
-	b.WriteString(fmt.Sprintf("Chat: %s\n", m.title))
-	b.WriteString(fmt.Sprintf("Messages: %d\n", m.count))
-	b.WriteString(fmt.Sprintf("File: %s\n", m.filename))
+
+	// Header with success indicator
+	b.WriteString(titleStyle.Render(modeUnreadStyle.Render("✓") + " Export complete"))
+	b.WriteString("\n\n")
+
+	// Details
+	b.WriteString(infoStyle.Render(fmt.Sprintf("Chat:     %s", m.title)))
+	b.WriteString("\n")
+	b.WriteString(infoStyle.Render(fmt.Sprintf("Messages: %d", m.count)))
+	b.WriteString("\n")
+	b.WriteString(infoStyle.Render(fmt.Sprintf("File:     %s", m.filename)))
+
 	if m.markStatus != "" {
-		b.WriteString("\n")
-		b.WriteString(m.markStatus)
-		b.WriteString("\n")
+		b.WriteString("\n\n")
+		b.WriteString(infoStyle.Render(statusBarStyle.Render(m.markStatus)))
 	}
-	b.WriteString("\nPress Enter to return to chat list.")
+
+	b.WriteString("\n\n")
+	b.WriteString(helpStyle.Render("Press Enter to return to chat list."))
+
 	return b.String()
 }
 

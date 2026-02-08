@@ -8,11 +8,7 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-var (
-	progressTitleStyle = lipgloss.NewStyle().MarginLeft(2).Bold(true)
-	progressInfoStyle  = lipgloss.NewStyle().MarginLeft(4)
-)
-
+// ProgressMsg updates the progress display.
 type ProgressMsg struct {
 	Phase   string
 	Parsed  int
@@ -22,6 +18,7 @@ type ProgressMsg struct {
 
 type progressDoneMsg struct{}
 
+// ProgressModel shows message parsing progress.
 type ProgressModel struct {
 	title   string
 	phase   string
@@ -33,9 +30,11 @@ type ProgressModel struct {
 	done    bool
 }
 
+// NewProgressModel creates a new progress indicator.
 func NewProgressModel(title string, msgCh <-chan tea.Msg) ProgressModel {
 	s := spinner.New()
 	s.Spinner = spinner.Dot
+	s.Style = lipgloss.NewStyle().Foreground(colorPrimary)
 	return ProgressModel{
 		title:   title,
 		spinner: s,
@@ -69,20 +68,23 @@ func (m ProgressModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 
 func (m ProgressModel) View() string {
 	if m.done {
-		return progressInfoStyle.Render("Done.")
+		return infoStyle.Render(modeUnreadStyle.Render("✓") + " Done.")
 	}
 
-	header := progressTitleStyle.Render(fmt.Sprintf("Parsing: %s", m.title))
+	header := titleStyle.Render(fmt.Sprintf("Parsing: %s", m.title))
+
 	status := fmt.Sprintf("%s parsed %d messages", m.spinner.View(), m.parsed)
 	if m.scanned > 0 {
-		status = fmt.Sprintf("%s parsed %d messages (scanned %d in %d batches)", m.spinner.View(), m.parsed, m.scanned, m.batches)
+		status = fmt.Sprintf("%s parsed %d messages (scanned %d in %d batches)",
+			m.spinner.View(), m.parsed, m.scanned, m.batches)
 	}
+
 	lines := []string{
 		header,
-		progressInfoStyle.Render(status),
+		infoStyle.Render(status),
 	}
 	if m.phase != "" {
-		lines = append(lines, progressInfoStyle.Render(fmt.Sprintf("Phase: %s", m.phase)))
+		lines = append(lines, infoStyle.Render(statusBarStyle.Render(fmt.Sprintf("Phase: %s", m.phase))))
 	}
 	return lipgloss.JoinVertical(lipgloss.Left, lines...)
 }

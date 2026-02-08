@@ -171,6 +171,15 @@ func TestModel_View_Selected(t *testing.T) {
 	}
 }
 
+func TestModel_View_EmptyList(t *testing.T) {
+	model := NewModel([]telegram.Chat{}, nil, ModelOptions{})
+	view := model.View()
+
+	if view == "" {
+		t.Error("expected non-empty view for empty list")
+	}
+}
+
 func TestModel_GetSelected(t *testing.T) {
 	model := NewModel([]telegram.Chat{}, nil, ModelOptions{})
 
@@ -186,30 +195,30 @@ func TestModel_GetSelected(t *testing.T) {
 	}
 }
 
-func TestItem_FilterValue(t *testing.T) {
-	it := item{chat: telegram.Chat{Title: "Test Chat"}}
+func TestChatItem_FilterValue(t *testing.T) {
+	it := chatItem{chat: telegram.Chat{Title: "Test Chat"}}
 
 	if it.FilterValue() != "Test Chat" {
 		t.Errorf("expected FilterValue 'Test Chat', got '%s'", it.FilterValue())
 	}
 }
 
-func TestItemDelegate_Height(t *testing.T) {
-	d := itemDelegate{}
+func TestChatDelegate_Height(t *testing.T) {
+	d := chatDelegate{}
 	if d.Height() != 1 {
 		t.Errorf("expected Height 1, got %d", d.Height())
 	}
 }
 
-func TestItemDelegate_Spacing(t *testing.T) {
-	d := itemDelegate{}
+func TestChatDelegate_Spacing(t *testing.T) {
+	d := chatDelegate{}
 	if d.Spacing() != 0 {
 		t.Errorf("expected Spacing 0, got %d", d.Spacing())
 	}
 }
 
-func TestItemDelegate_Update(t *testing.T) {
-	d := itemDelegate{}
+func TestChatDelegate_Update(t *testing.T) {
+	d := chatDelegate{}
 	cmd := d.Update(nil, nil)
 	if cmd != nil {
 		t.Error("expected nil command from Update")
@@ -247,16 +256,49 @@ func TestChatTypeLabel(t *testing.T) {
 		chat telegram.Chat
 		want string
 	}{
-		{name: "forum", chat: telegram.Chat{IsForum: true}, want: "topics"},
+		{name: "forum", chat: telegram.Chat{IsForum: true}, want: "forum"},
 		{name: "bot", chat: telegram.Chat{IsBot: true, IsUser: true}, want: "bot"},
 		{name: "private", chat: telegram.Chat{IsUser: true}, want: "private"},
-		{name: "chat", chat: telegram.Chat{}, want: "chat"},
+		{name: "channel", chat: telegram.Chat{IsChannel: true}, want: "channel"},
+		{name: "group", chat: telegram.Chat{}, want: "group"},
 	}
 
 	for _, tt := range tests {
 		if got := chatTypeLabel(tt.chat); got != tt.want {
 			t.Errorf("%s: chatTypeLabel() = %q, want %q", tt.name, got, tt.want)
 		}
+	}
+}
+
+func TestChatIcon(t *testing.T) {
+	tests := []struct {
+		name string
+		chat telegram.Chat
+		want string
+	}{
+		{name: "forum", chat: telegram.Chat{IsForum: true}, want: iconForum},
+		{name: "bot", chat: telegram.Chat{IsBot: true}, want: iconBot},
+		{name: "private", chat: telegram.Chat{IsUser: true}, want: iconPrivate},
+		{name: "channel", chat: telegram.Chat{IsChannel: true}, want: iconChannel},
+		{name: "group", chat: telegram.Chat{}, want: iconGroup},
+	}
+
+	for _, tt := range tests {
+		if got := chatIcon(tt.chat); got != tt.want {
+			t.Errorf("%s: chatIcon() = %q, want %q", tt.name, got, tt.want)
+		}
+	}
+}
+
+func TestFormatUnreadBadge(t *testing.T) {
+	if badge := formatUnreadBadge(0); badge != "" {
+		t.Errorf("expected empty badge for 0 unread, got %q", badge)
+	}
+	if badge := formatUnreadBadge(-1); badge != "" {
+		t.Errorf("expected empty badge for -1 unread, got %q", badge)
+	}
+	if badge := formatUnreadBadge(5); badge == "" {
+		t.Error("expected non-empty badge for 5 unread")
 	}
 }
 
@@ -353,6 +395,15 @@ func TestTopicModel_View(t *testing.T) {
 	}
 }
 
+func TestTopicModel_View_EmptyList(t *testing.T) {
+	model := NewTopicModel([]telegram.Topic{})
+	view := model.View()
+
+	if view == "" {
+		t.Error("expected non-empty view for empty list")
+	}
+}
+
 func TestTopicModel_GetSelected(t *testing.T) {
 	model := NewTopicModel([]telegram.Topic{})
 
@@ -376,22 +427,22 @@ func TestTopicItem_FilterValue(t *testing.T) {
 	}
 }
 
-func TestTopicItemDelegate_Height(t *testing.T) {
-	d := topicItemDelegate{}
+func TestTopicDelegate_Height(t *testing.T) {
+	d := topicDelegate{}
 	if d.Height() != 1 {
 		t.Errorf("expected Height 1, got %d", d.Height())
 	}
 }
 
-func TestTopicItemDelegate_Spacing(t *testing.T) {
-	d := topicItemDelegate{}
+func TestTopicDelegate_Spacing(t *testing.T) {
+	d := topicDelegate{}
 	if d.Spacing() != 0 {
 		t.Errorf("expected Spacing 0, got %d", d.Spacing())
 	}
 }
 
-func TestTopicItemDelegate_Update(t *testing.T) {
-	d := topicItemDelegate{}
+func TestTopicDelegate_Update(t *testing.T) {
+	d := topicDelegate{}
 	cmd := d.Update(nil, nil)
 	if cmd != nil {
 		t.Error("expected nil command from Update")
@@ -418,5 +469,32 @@ func TestSummaryModel_Update_Enter(t *testing.T) {
 	}
 	if !m.Done() {
 		t.Error("expected done to be true")
+	}
+}
+
+func TestModeLabel(t *testing.T) {
+	if got := modeLabel(ModeUnread); got != "Unread" {
+		t.Errorf("modeLabel(ModeUnread) = %q, want %q", got, "Unread")
+	}
+	if got := modeLabel(ModeDateRange); got != "Date range" {
+		t.Errorf("modeLabel(ModeDateRange) = %q, want %q", got, "Date range")
+	}
+}
+
+func TestListDimensions(t *testing.T) {
+	// Test minimum bounds
+	if w := listWidthForWindow(10); w != minListWidth {
+		t.Errorf("listWidthForWindow(10) = %d, want %d", w, minListWidth)
+	}
+	if h := listHeightForWindow(5, 2); h != minListHeight {
+		t.Errorf("listHeightForWindow(5, 2) = %d, want %d", h, minListHeight)
+	}
+
+	// Test normal values
+	if w := listWidthForWindow(100); w != 98 {
+		t.Errorf("listWidthForWindow(100) = %d, want 98", w)
+	}
+	if h := listHeightForWindow(50, 2); h != 48 {
+		t.Errorf("listHeightForWindow(50, 2) = %d, want 48", h)
 	}
 }
