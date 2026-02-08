@@ -270,35 +270,42 @@ func TestChatTypeLabel(t *testing.T) {
 	}
 }
 
-func TestChatIcon(t *testing.T) {
+func TestStripEmoji(t *testing.T) {
 	tests := []struct {
-		name string
-		chat telegram.Chat
-		want string
+		input string
+		want  string
 	}{
-		{name: "forum", chat: telegram.Chat{IsForum: true}, want: iconForum},
-		{name: "bot", chat: telegram.Chat{IsBot: true}, want: iconBot},
-		{name: "private", chat: telegram.Chat{IsUser: true}, want: iconPrivate},
-		{name: "channel", chat: telegram.Chat{IsChannel: true}, want: iconChannel},
-		{name: "group", chat: telegram.Chat{}, want: iconGroup},
+		{"Channel Name", "Channel Name"},
+		{"📢 News Channel", "News Channel"},
+		{"🔥 Hot 🔥 Topic 🔥", "Hot  Topic"},
+		{"  spaces  ", "spaces"},
+		{"NoEmoji", "NoEmoji"},
+		{"", ""},
 	}
 
 	for _, tt := range tests {
-		if got := chatIcon(tt.chat); got != tt.want {
-			t.Errorf("%s: chatIcon() = %q, want %q", tt.name, got, tt.want)
+		if got := StripEmoji(tt.input); got != tt.want {
+			t.Errorf("StripEmoji(%q) = %q, want %q", tt.input, got, tt.want)
 		}
 	}
 }
 
-func TestFormatUnreadBadge(t *testing.T) {
-	if badge := formatUnreadBadge(0); badge != "" {
-		t.Errorf("expected empty badge for 0 unread, got %q", badge)
+func TestFormatChatLine(t *testing.T) {
+	tests := []struct {
+		title string
+		count int
+		want  string
+	}{
+		{"Chat", 0, "Chat"},
+		{"Chat", -1, "Chat"},
+		{"Chat", 5, "[5] Chat"},
+		{"News", 100, "[100] News"},
 	}
-	if badge := formatUnreadBadge(-1); badge != "" {
-		t.Errorf("expected empty badge for -1 unread, got %q", badge)
-	}
-	if badge := formatUnreadBadge(5); badge == "" {
-		t.Error("expected non-empty badge for 5 unread")
+
+	for _, tt := range tests {
+		if got := formatChatLine(tt.title, tt.count); got != tt.want {
+			t.Errorf("formatChatLine(%q, %d) = %q, want %q", tt.title, tt.count, got, tt.want)
+		}
 	}
 }
 

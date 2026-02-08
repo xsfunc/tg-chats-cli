@@ -3,6 +3,7 @@ package tui
 import (
 	"fmt"
 	"io"
+	"regexp"
 	"strings"
 
 	"cli-tg-chat-summary/internal/telegram"
@@ -38,11 +39,8 @@ func (d chatDelegate) Render(w io.Writer, m list.Model, index int, listItem list
 		return
 	}
 
-	icon := chatIcon(i.chat)
-	title := i.chat.Title
-	badge := formatUnreadBadge(i.chat.UnreadCount)
-
-	str := fmt.Sprintf("%s %s%s", icon, title, badge)
+	title := StripEmoji(i.chat.Title)
+	str := formatChatLine(title, i.chat.UnreadCount)
 	renderListItem(w, str, index == m.Index())
 }
 
@@ -59,33 +57,26 @@ func (d topicDelegate) Render(w io.Writer, m list.Model, index int, listItem lis
 		return
 	}
 
-	badge := formatUnreadBadge(i.topic.UnreadCount)
-	str := fmt.Sprintf("%s %s%s", iconTopic, i.topic.Title, badge)
+	title := StripEmoji(i.topic.Title)
+	str := formatChatLine(title, i.topic.UnreadCount)
 	renderListItem(w, str, index == m.Index())
 }
 
-// chatIcon returns an emoji icon based on chat type.
-func chatIcon(chat telegram.Chat) string {
-	switch {
-	case chat.IsForum:
-		return iconForum
-	case chat.IsBot:
-		return iconBot
-	case chat.IsUser:
-		return iconPrivate
-	case chat.IsChannel:
-		return iconChannel
-	default:
-		return iconGroup
-	}
+// emojiPattern matches Unicode emoji ranges.
+var emojiPattern = regexp.MustCompile(`[\x{1F300}-\x{1FAF8}\x{2600}-\x{26FF}\x{2700}-\x{27BF}\x{FE00}-\x{FE0F}\x{1F000}-\x{1F0FF}\x{2300}-\x{23FF}\x{2B50}-\x{2B55}\x{200D}\x{20E3}\x{E0020}-\x{E007F}\x{1F1E0}-\x{1F1FF}]+`)
+
+// StripEmoji removes emoji characters from the string and trims extra spaces.
+func StripEmoji(s string) string {
+	cleaned := emojiPattern.ReplaceAllString(s, "")
+	return strings.TrimSpace(cleaned)
 }
 
-// formatUnreadBadge returns a styled unread count or empty string.
-func formatUnreadBadge(count int) string {
-	if count <= 0 {
-		return ""
+// formatChatLine returns formatted line: [count] Title or just Title if count is 0.
+func formatChatLine(title string, count int) string {
+	if count > 0 {
+		return fmt.Sprintf("[%d] %s", count, title)
 	}
-	return unreadBadge.Render(fmt.Sprintf(" ⬤ %d", count))
+	return title
 }
 
 // renderListItem writes a styled list item to the writer.
