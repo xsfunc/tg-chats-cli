@@ -2,6 +2,7 @@ package app
 
 import (
 	"bytes"
+	"errors"
 	"io"
 	"os"
 	"strings"
@@ -16,6 +17,13 @@ type nopWriteCloser struct {
 }
 
 func (n nopWriteCloser) Close() error { return nil }
+
+type errWriteCloser struct {
+	io.Writer
+	closeErr error
+}
+
+func (e errWriteCloser) Close() error { return e.closeErr }
 
 type testExporterEnv struct {
 	Exporter    *DefaultExporter
@@ -168,5 +176,32 @@ func TestDefaultExporter_Export_XMLCompact(t *testing.T) {
 	}
 	if !strings.Contains(output, "<m t=\"2025-01-02T03:04:05Z\" s=\"10\">hello</m>") {
 		t.Fatalf("missing compact message text: %q", output)
+	}
+}
+
+func TestDefaultExporter_Export_CloseError(t *testing.T) {
+	now := time.Date(2025, 1, 2, 3, 4, 5, 0, time.UTC)
+	closeErr := errors.New("disk full")
+	buf := &bytes.Buffer{}
+
+	exporter := &DefaultExporter{
+		Now:       func() time.Time { return now },
+		Getwd:     func() (string, error) { return "/work", nil },
+		Templates: NewDefaultTemplateRegistry(),
+		MkdirAll:  func(_ string, _ os.FileMode) error { return nil },
+		Create: func(_ string) (io.WriteCloser, error) {
+			return errWriteCloser{Writer: buf, closeErr: closeErr}, nil
+		},
+	}
+
+	_, err := exporter.Export("Test", nil, RunOptions{})
+	if err == nil {
+		t.Fatal("expected error from Close(), got nil")
+	}
+	if !strings.Contains(err.Error(), "failed to close export file") {
+		t.Fatalf("unexpected error message: %v", err)
+	}
+	if !errors.Is(err, closeErr) {
+		t.Fatalf("error should wrap closeErr: %v", err)
 	}
 }

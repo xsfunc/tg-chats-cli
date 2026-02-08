@@ -27,9 +27,9 @@ type TemplateMessage struct {
 	Date       time.Time
 	Text       string
 	SenderID   int64
-	SenderName string
-	ReplyTo    *TemplateReply
-	Reactions  []TemplateReaction
+	SenderName string             // Reserved: requires user lookup, not populated yet
+	ReplyTo    *TemplateReply     // Reserved: requires additional API calls
+	Reactions  []TemplateReaction // Reserved: requires additional API calls
 }
 
 type TemplateReply struct {

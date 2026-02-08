@@ -75,10 +75,10 @@ func (e *DefaultExporter) Export(exportTitle string, messages []telegram.Message
 	if err != nil {
 		return "", fmt.Errorf("failed to create file: %w", err)
 	}
-	defer func() {
-		_ = f.Close()
-	}()
 
+	// Convert telegram messages to template messages.
+	// Note: SenderName, ReplyTo, Reactions require additional API calls
+	// and are not populated from the basic telegram.Message struct.
 	templateMessages := make([]TemplateMessage, 0, len(messages))
 	for _, msg := range messages {
 		templateMessages = append(templateMessages, TemplateMessage{
@@ -96,8 +96,11 @@ func (e *DefaultExporter) Export(exportTitle string, messages []telegram.Message
 		Options:       opts,
 	}
 	if err := template.Render(f, input); err != nil {
+		_ = f.Close()
 		return "", fmt.Errorf("failed to render %s: %w", template.Name(), err)
 	}
-
+	if err := f.Close(); err != nil {
+		return "", fmt.Errorf("failed to close export file: %w", err)
+	}
 	return filename, nil
 }
