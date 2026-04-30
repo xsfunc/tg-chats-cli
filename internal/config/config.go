@@ -11,14 +11,15 @@ import (
 
 // Config holds the application configuration.
 type Config struct {
-	TelegramAppID       int
-	TelegramAppHash     string
-	Phone               string
-	LogLevel            string
-	RateLimitMs         int
-	HistoryDelayMinMs   int
-	HistoryDelayMaxMs   int
-	FloodWaitMaxSeconds int
+	TelegramAppID                 int
+	TelegramAppHash               string
+	Phone                         string
+	LogLevel                      string
+	RateLimitMs                   int
+	TelegramConnectTimeoutSeconds int
+	HistoryDelayMinMs             int
+	HistoryDelayMaxMs             int
+	FloodWaitMaxSeconds           int
 }
 
 // Load reads configuration from environment variables.
@@ -53,6 +54,11 @@ func Load() (*Config, error) {
 		}
 	}
 
+	connectTimeout := intEnv("TG_CONNECT_TIMEOUT_SECONDS", 60)
+	if connectTimeout < 0 {
+		connectTimeout = 60
+	}
+
 	historyDelayMin := intEnv("HISTORY_DELAY_MIN_MS", 2000)
 	historyDelayMax := intEnv("HISTORY_DELAY_MAX_MS", 4000)
 	if historyDelayMin <= 0 {
@@ -71,14 +77,15 @@ func Load() (*Config, error) {
 	}
 
 	return &Config{
-		TelegramAppID:       appID,
-		TelegramAppHash:     appHash,
-		Phone:               os.Getenv("TG_PHONE"),
-		LogLevel:            logLevel,
-		RateLimitMs:         rateLimit,
-		HistoryDelayMinMs:   historyDelayMin,
-		HistoryDelayMaxMs:   historyDelayMax,
-		FloodWaitMaxSeconds: floodWaitMax,
+		TelegramAppID:                 appID,
+		TelegramAppHash:               appHash,
+		Phone:                         os.Getenv("TG_PHONE"),
+		LogLevel:                      logLevel,
+		RateLimitMs:                   rateLimit,
+		TelegramConnectTimeoutSeconds: connectTimeout,
+		HistoryDelayMinMs:             historyDelayMin,
+		HistoryDelayMaxMs:             historyDelayMax,
+		FloodWaitMaxSeconds:           floodWaitMax,
 	}, nil
 }
 

@@ -67,6 +67,7 @@ func TestLoad_Success(t *testing.T) {
 	setEnv(t, "TG_PHONE", "+1234567890")
 	setEnv(t, "LOG_LEVEL", "debug")
 	setEnv(t, "RATE_LIMIT_MS", "500")
+	setEnv(t, "TG_CONNECT_TIMEOUT_SECONDS", "45")
 	setEnv(t, "HISTORY_DELAY_MIN_MS", "2500")
 	setEnv(t, "HISTORY_DELAY_MAX_MS", "4500")
 	setEnv(t, "FLOOD_WAIT_MAX_SECONDS", "600")
@@ -91,6 +92,9 @@ func TestLoad_Success(t *testing.T) {
 	if cfg.RateLimitMs != 500 {
 		t.Errorf("expected RateLimitMs 500, got %d", cfg.RateLimitMs)
 	}
+	if cfg.TelegramConnectTimeoutSeconds != 45 {
+		t.Errorf("expected TelegramConnectTimeoutSeconds 45, got %d", cfg.TelegramConnectTimeoutSeconds)
+	}
 	if cfg.HistoryDelayMinMs != 2500 {
 		t.Errorf("expected HistoryDelayMinMs 2500, got %d", cfg.HistoryDelayMinMs)
 	}
@@ -108,6 +112,7 @@ func TestLoad_Defaults(t *testing.T) {
 	unsetEnv(t, "TG_PHONE")
 	unsetEnv(t, "LOG_LEVEL")
 	unsetEnv(t, "RATE_LIMIT_MS")
+	unsetEnv(t, "TG_CONNECT_TIMEOUT_SECONDS")
 	unsetEnv(t, "HISTORY_DELAY_MIN_MS")
 	unsetEnv(t, "HISTORY_DELAY_MAX_MS")
 	unsetEnv(t, "FLOOD_WAIT_MAX_SECONDS")
@@ -125,6 +130,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.RateLimitMs != 350 {
 		t.Errorf("expected default RateLimitMs 350, got %d", cfg.RateLimitMs)
+	}
+	if cfg.TelegramConnectTimeoutSeconds != 60 {
+		t.Errorf("expected default TelegramConnectTimeoutSeconds 60, got %d", cfg.TelegramConnectTimeoutSeconds)
 	}
 	if cfg.HistoryDelayMinMs != 2000 {
 		t.Errorf("expected default HistoryDelayMinMs 2000, got %d", cfg.HistoryDelayMinMs)
@@ -158,6 +166,7 @@ func TestLoad_InvalidSafetyLimitsFallBackToDefaults(t *testing.T) {
 	setEnv(t, "HISTORY_DELAY_MIN_MS", "not_a_number")
 	setEnv(t, "HISTORY_DELAY_MAX_MS", "-1")
 	setEnv(t, "FLOOD_WAIT_MAX_SECONDS", "0")
+	setEnv(t, "TG_CONNECT_TIMEOUT_SECONDS", "-1")
 
 	cfg, err := Load()
 	if err != nil {
@@ -172,6 +181,9 @@ func TestLoad_InvalidSafetyLimitsFallBackToDefaults(t *testing.T) {
 	}
 	if cfg.FloodWaitMaxSeconds != 900 {
 		t.Errorf("expected default FloodWaitMaxSeconds 900, got %d", cfg.FloodWaitMaxSeconds)
+	}
+	if cfg.TelegramConnectTimeoutSeconds != 60 {
+		t.Errorf("expected default TelegramConnectTimeoutSeconds 60, got %d", cfg.TelegramConnectTimeoutSeconds)
 	}
 }
 

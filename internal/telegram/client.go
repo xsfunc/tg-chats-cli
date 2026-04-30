@@ -113,7 +113,9 @@ func (c *Client) Login(ctx context.Context, input io.Reader) error {
 		return fmt.Errorf("failed to create session directory: %w", err)
 	}
 
+	clientCtx, cancelClient := context.WithCancel(ctx)
 	opts := &gotgproto.ClientOpts{
+		Context:         clientCtx,
 		Session:         sessionMaker.SqlSession(sqlite.Open("session/session.db")),
 		AuthConversator: gotgproto.BasicConversator(),
 		Middlewares: []telegram.Middleware{
@@ -131,13 +133,9 @@ func (c *Client) Login(ctx context.Context, input io.Reader) error {
 		}))
 	}
 
-	client, err := gotgproto.NewClient(
-		c.cfg.TelegramAppID,
-		c.cfg.TelegramAppHash,
-		gotgproto.ClientTypePhone(c.cfg.Phone),
-		opts,
-	)
+	client, err := c.startClient(opts, cancelClient)
 	if err != nil {
+		cancelClient()
 		return fmt.Errorf("failed to create client: %w", err)
 	}
 
@@ -145,6 +143,48 @@ func (c *Client) Login(ctx context.Context, input io.Reader) error {
 	c.ctx = client.CreateContext()
 
 	return nil
+}
+
+type startClientResult struct {
+	client *gotgproto.Client
+	err    error
+}
+
+func (c *Client) startClient(opts *gotgproto.ClientOpts, cancelClient context.CancelFunc) (*gotgproto.Client, error) {
+	resultCh := make(chan startClientResult, 1)
+	go func() {
+		client, err := gotgproto.NewClient(
+			c.cfg.TelegramAppID,
+			c.cfg.TelegramAppHash,
+			gotgproto.ClientTypePhone(c.cfg.Phone),
+			opts,
+		)
+		resultCh <- startClientResult{client: client, err: err}
+	}()
+
+	timeoutSeconds := c.cfg.TelegramConnectTimeoutSeconds
+	if timeoutSeconds == 0 {
+		result := <-resultCh
+		return result.client, result.err
+	}
+
+	timeout := time.Duration(timeoutSeconds) * time.Second
+	statusTimer := time.NewTimer(10 * time.Second)
+	timeoutTimer := time.NewTimer(timeout)
+	defer statusTimer.Stop()
+	defer timeoutTimer.Stop()
+
+	for {
+		select {
+		case result := <-resultCh:
+			return result.client, result.err
+		case <-statusTimer.C:
+			fmt.Fprintf(os.Stderr, "Still connecting to Telegram after 10s; waiting up to %s before aborting.\n", timeout)
+		case <-timeoutTimer.C:
+			cancelClient()
+			return nil, fmt.Errorf("telegram connection timed out after %ds; check network/proxy access to Telegram or increase TG_CONNECT_TIMEOUT_SECONDS", timeoutSeconds)
+		}
+	}
 }
 
 func (c *Client) GetDialogs(ctx context.Context) ([]Chat, error) {

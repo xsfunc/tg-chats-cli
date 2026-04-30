@@ -168,11 +168,16 @@ Optional:
 - `TG_PHONE` phone number for login.
 - `LOG_LEVEL` `debug|info|warn|error` (default `info`).
 - `RATE_LIMIT_MS` request interval in milliseconds (default `350`).
+- `TG_CONNECT_TIMEOUT_SECONDS` maximum time to wait for Telegram client startup before aborting (default `60`, set `0` to disable).
 - `HISTORY_DELAY_MIN_MS` minimum pause between Telegram history pages (default `2000`).
 - `HISTORY_DELAY_MAX_MS` maximum pause between Telegram history pages (default `4000`).
 - `FLOOD_WAIT_MAX_SECONDS` maximum Telegram flood-wait delay to handle automatically (default `900`).
 
 The session file is stored at `session/session.db`.
+
+## Troubleshooting
+
+If startup stops after the GoTGProto banner, the client is still trying to connect or authorize with Telegram. By default the app aborts after `TG_CONNECT_TIMEOUT_SECONDS=60` with a diagnostic error. Check network or proxy access to Telegram, try `LOG_LEVEL=debug`, or increase/disable the startup timeout with `TG_CONNECT_TIMEOUT_SECONDS=0` if you expect a long authorization step.
 
 ## Telegram Safety Pauses
 
