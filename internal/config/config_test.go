@@ -67,6 +67,9 @@ func TestLoad_Success(t *testing.T) {
 	setEnv(t, "TG_PHONE", "+1234567890")
 	setEnv(t, "LOG_LEVEL", "debug")
 	setEnv(t, "RATE_LIMIT_MS", "500")
+	setEnv(t, "HISTORY_DELAY_MIN_MS", "2500")
+	setEnv(t, "HISTORY_DELAY_MAX_MS", "4500")
+	setEnv(t, "FLOOD_WAIT_MAX_SECONDS", "600")
 
 	cfg, err := Load()
 	if err != nil {
@@ -88,6 +91,15 @@ func TestLoad_Success(t *testing.T) {
 	if cfg.RateLimitMs != 500 {
 		t.Errorf("expected RateLimitMs 500, got %d", cfg.RateLimitMs)
 	}
+	if cfg.HistoryDelayMinMs != 2500 {
+		t.Errorf("expected HistoryDelayMinMs 2500, got %d", cfg.HistoryDelayMinMs)
+	}
+	if cfg.HistoryDelayMaxMs != 4500 {
+		t.Errorf("expected HistoryDelayMaxMs 4500, got %d", cfg.HistoryDelayMaxMs)
+	}
+	if cfg.FloodWaitMaxSeconds != 600 {
+		t.Errorf("expected FloodWaitMaxSeconds 600, got %d", cfg.FloodWaitMaxSeconds)
+	}
 }
 
 func TestLoad_Defaults(t *testing.T) {
@@ -96,6 +108,9 @@ func TestLoad_Defaults(t *testing.T) {
 	unsetEnv(t, "TG_PHONE")
 	unsetEnv(t, "LOG_LEVEL")
 	unsetEnv(t, "RATE_LIMIT_MS")
+	unsetEnv(t, "HISTORY_DELAY_MIN_MS")
+	unsetEnv(t, "HISTORY_DELAY_MAX_MS")
+	unsetEnv(t, "FLOOD_WAIT_MAX_SECONDS")
 
 	cfg, err := Load()
 	if err != nil {
@@ -111,6 +126,15 @@ func TestLoad_Defaults(t *testing.T) {
 	if cfg.RateLimitMs != 350 {
 		t.Errorf("expected default RateLimitMs 350, got %d", cfg.RateLimitMs)
 	}
+	if cfg.HistoryDelayMinMs != 2000 {
+		t.Errorf("expected default HistoryDelayMinMs 2000, got %d", cfg.HistoryDelayMinMs)
+	}
+	if cfg.HistoryDelayMaxMs != 4000 {
+		t.Errorf("expected default HistoryDelayMaxMs 4000, got %d", cfg.HistoryDelayMaxMs)
+	}
+	if cfg.FloodWaitMaxSeconds != 900 {
+		t.Errorf("expected default FloodWaitMaxSeconds 900, got %d", cfg.FloodWaitMaxSeconds)
+	}
 }
 
 func TestLoad_InvalidRateLimitFallsBackToDefault(t *testing.T) {
@@ -125,5 +149,47 @@ func TestLoad_InvalidRateLimitFallsBackToDefault(t *testing.T) {
 
 	if cfg.RateLimitMs != 350 {
 		t.Errorf("expected default RateLimitMs 350 on invalid input, got %d", cfg.RateLimitMs)
+	}
+}
+
+func TestLoad_InvalidSafetyLimitsFallBackToDefaults(t *testing.T) {
+	setEnv(t, "TG_APP_ID", "12345")
+	setEnv(t, "TG_APP_HASH", "testhash")
+	setEnv(t, "HISTORY_DELAY_MIN_MS", "not_a_number")
+	setEnv(t, "HISTORY_DELAY_MAX_MS", "-1")
+	setEnv(t, "FLOOD_WAIT_MAX_SECONDS", "0")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.HistoryDelayMinMs != 2000 {
+		t.Errorf("expected default HistoryDelayMinMs 2000, got %d", cfg.HistoryDelayMinMs)
+	}
+	if cfg.HistoryDelayMaxMs != 4000 {
+		t.Errorf("expected default HistoryDelayMaxMs 4000, got %d", cfg.HistoryDelayMaxMs)
+	}
+	if cfg.FloodWaitMaxSeconds != 900 {
+		t.Errorf("expected default FloodWaitMaxSeconds 900, got %d", cfg.FloodWaitMaxSeconds)
+	}
+}
+
+func TestLoad_SwapsReversedHistoryDelayRange(t *testing.T) {
+	setEnv(t, "TG_APP_ID", "12345")
+	setEnv(t, "TG_APP_HASH", "testhash")
+	setEnv(t, "HISTORY_DELAY_MIN_MS", "5000")
+	setEnv(t, "HISTORY_DELAY_MAX_MS", "2000")
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.HistoryDelayMinMs != 2000 {
+		t.Errorf("expected swapped HistoryDelayMinMs 2000, got %d", cfg.HistoryDelayMinMs)
+	}
+	if cfg.HistoryDelayMaxMs != 5000 {
+		t.Errorf("expected swapped HistoryDelayMaxMs 5000, got %d", cfg.HistoryDelayMaxMs)
 	}
 }

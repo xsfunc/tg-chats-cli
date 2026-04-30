@@ -425,6 +425,76 @@ func TestFetchMessages_PaginatesAndReportsProgress(t *testing.T) {
 	}
 }
 
+func TestFetchMessages_PacesBetweenHistoryPages(t *testing.T) {
+	pacer := newHistoryPacer(&config.Config{
+		HistoryDelayMinMs: 2000,
+		HistoryDelayMaxMs: 2000,
+	})
+	var pauses int
+	pacer.sleep = func(_ context.Context, d time.Duration) error {
+		pauses++
+		if d != 2*time.Second {
+			t.Fatalf("unexpected pause: got %v want %v", d, 2*time.Second)
+		}
+		return nil
+	}
+
+	client := &Client{historyPacer: pacer}
+	callCount := 0
+	var phases []string
+
+	fetch := func(_ int, _ int, limit int) (tg.MessagesMessagesClass, error) {
+		callCount++
+		switch callCount {
+		case 1:
+			msgs := make([]tg.MessageClass, 0, limit)
+			for i := 0; i < limit; i++ {
+				msgs = append(msgs, &tg.Message{ID: 200 - i, Date: 1000 - i, Message: "a"})
+			}
+			return &tg.MessagesMessages{Messages: msgs}, nil
+		case 2:
+			return &tg.MessagesMessages{
+				Messages: []tg.MessageClass{
+					&tg.Message{ID: 99, Date: 500, Message: "b"},
+				},
+			}, nil
+		default:
+			return &tg.MessagesMessages{Messages: nil}, nil
+		}
+	}
+
+	_, err := client.fetchMessages(
+		context.Background(),
+		func(update ProgressUpdate) {
+			phases = append(phases, update.Phase)
+		},
+		"test-phase",
+		time.Time{},
+		false,
+		fetch,
+		func(*tg.Message) (bool, bool) { return true, false },
+	)
+	if err != nil {
+		t.Fatalf("fetchMessages error: %v", err)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected 2 fetch calls, got %d", callCount)
+	}
+	if pauses != 1 {
+		t.Fatalf("expected 1 pause between pages, got %d", pauses)
+	}
+	foundPause := false
+	for _, phase := range phases {
+		if phase == "pausing 2.0s before next history request" {
+			foundPause = true
+			break
+		}
+	}
+	if !foundPause {
+		t.Fatalf("expected pause progress phase, got %v", phases)
+	}
+}
+
 func TestFetchMessages_UsesOffsetDateOnFirstPage(t *testing.T) {
 	client := &Client{}
 

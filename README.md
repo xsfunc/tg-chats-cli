@@ -167,8 +167,19 @@ Optional:
 - `TG_PHONE` phone number for login.
 - `LOG_LEVEL` `debug|info|warn|error` (default `info`).
 - `RATE_LIMIT_MS` request interval in milliseconds (default `350`).
+- `HISTORY_DELAY_MIN_MS` minimum pause between Telegram history pages (default `2000`).
+- `HISTORY_DELAY_MAX_MS` maximum pause between Telegram history pages (default `4000`).
+- `FLOOD_WAIT_MAX_SECONDS` maximum Telegram flood-wait delay to handle automatically (default `900`).
 
 The session file is stored at `session/session.db`.
+
+## Telegram Safety Pauses
+
+History export uses an additional pacer for `messages.getHistory` and forum topic history calls. The first history page is requested immediately, then later pages wait for a random delay between `HISTORY_DELAY_MIN_MS` and `HISTORY_DELAY_MAX_MS`. This jitter avoids fixed metronome-like request timing.
+
+If Telegram returns a `FLOOD_WAIT`, the client logs the wait, slows future history requests with adaptive backoff, and retries only when the requested wait is no longer than `FLOOD_WAIT_MAX_SECONDS`. Longer waits stop the export with an error instead of leaving the process paused for a long time.
+
+These settings reduce risk but do not guarantee that Telegram will not limit or ban an account. Avoid large full-history exports, repeated runs, multiple concurrent sessions, and unnecessary mark-as-read actions.
 
 ## CLI Flags
 

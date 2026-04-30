@@ -17,7 +17,6 @@ import (
 	"github.com/celestix/gotgproto/ext"
 	"github.com/celestix/gotgproto/sessionMaker"
 	"github.com/glebarez/sqlite"
-	"github.com/gotd/contrib/middleware/floodwait"
 	"github.com/gotd/contrib/middleware/ratelimit"
 	"github.com/gotd/td/telegram"
 	"github.com/gotd/td/tg"
@@ -30,6 +29,7 @@ type Client struct {
 	ctx          *ext.Context
 	peerCache    map[int64]tg.InputPeerClass
 	channelCache map[int64]*tg.Channel // For forum operations
+	historyPacer *historyPacer
 }
 
 type Chat struct {
@@ -74,11 +74,18 @@ func reportProgress(progress ProgressFunc, update ProgressUpdate) {
 	}
 }
 
+func (c *Client) recordFloodWait(time.Duration) {
+	if c.historyPacer != nil {
+		c.historyPacer.RecordFloodWait()
+	}
+}
+
 func NewClient(cfg *config.Config) (*Client, error) {
 	return &Client{
 		cfg:          cfg,
 		peerCache:    make(map[int64]tg.InputPeerClass),
 		channelCache: make(map[int64]*tg.Channel),
+		historyPacer: newHistoryPacer(cfg),
 	}, nil
 }
 
@@ -110,7 +117,7 @@ func (c *Client) Login(ctx context.Context, input io.Reader) error {
 		Session:         sessionMaker.SqlSession(sqlite.Open("session/session.db")),
 		AuthConversator: gotgproto.BasicConversator(),
 		Middlewares: []telegram.Middleware{
-			floodwait.NewSimpleWaiter(),
+			newFloodWaitMiddleware(time.Duration(c.cfg.FloodWaitMaxSeconds)*time.Second, c.recordFloodWait),
 			ratelimit.New(rate.Every(time.Duration(c.cfg.RateLimitMs)*time.Millisecond), 3),
 		},
 	}
@@ -635,6 +642,7 @@ func (c *Client) fetchMessages(
 	var allMessages []Message
 	offsetID := 0
 	batchSize := 100
+	page := 0
 
 	for {
 		offsetDate := 0
@@ -646,10 +654,20 @@ func (c *Client) fetchMessages(
 			})
 		}
 
+		if page > 0 && c.historyPacer != nil {
+			if err := c.historyPacer.Wait(ctx, progress); err != nil {
+				return nil, fmt.Errorf("history request pause: %w", err)
+			}
+		}
+
 		result, err := fetch(offsetID, offsetDate, batchSize)
 		if err != nil {
 			return nil, err
 		}
+		if c.historyPacer != nil {
+			c.historyPacer.RecordSuccess()
+		}
+		page++
 
 		msgs, users := extractMessagesAndUsers(result)
 		if len(msgs) == 0 {

@@ -11,11 +11,14 @@ import (
 
 // Config holds the application configuration.
 type Config struct {
-	TelegramAppID   int
-	TelegramAppHash string
-	Phone           string
-	LogLevel        string
-	RateLimitMs     int
+	TelegramAppID       int
+	TelegramAppHash     string
+	Phone               string
+	LogLevel            string
+	RateLimitMs         int
+	HistoryDelayMinMs   int
+	HistoryDelayMaxMs   int
+	FloodWaitMaxSeconds int
 }
 
 // Load reads configuration from environment variables.
@@ -50,11 +53,43 @@ func Load() (*Config, error) {
 		}
 	}
 
+	historyDelayMin := intEnv("HISTORY_DELAY_MIN_MS", 2000)
+	historyDelayMax := intEnv("HISTORY_DELAY_MAX_MS", 4000)
+	if historyDelayMin <= 0 {
+		historyDelayMin = 2000
+	}
+	if historyDelayMax <= 0 {
+		historyDelayMax = 4000
+	}
+	if historyDelayMin > historyDelayMax {
+		historyDelayMin, historyDelayMax = historyDelayMax, historyDelayMin
+	}
+
+	floodWaitMax := intEnv("FLOOD_WAIT_MAX_SECONDS", 900)
+	if floodWaitMax <= 0 {
+		floodWaitMax = 900
+	}
+
 	return &Config{
-		TelegramAppID:   appID,
-		TelegramAppHash: appHash,
-		Phone:           os.Getenv("TG_PHONE"),
-		LogLevel:        logLevel,
-		RateLimitMs:     rateLimit,
+		TelegramAppID:       appID,
+		TelegramAppHash:     appHash,
+		Phone:               os.Getenv("TG_PHONE"),
+		LogLevel:            logLevel,
+		RateLimitMs:         rateLimit,
+		HistoryDelayMinMs:   historyDelayMin,
+		HistoryDelayMaxMs:   historyDelayMax,
+		FloodWaitMaxSeconds: floodWaitMax,
 	}, nil
+}
+
+func intEnv(key string, fallback int) int {
+	value := os.Getenv(key)
+	if value == "" {
+		return fallback
+	}
+	parsed, err := strconv.Atoi(value)
+	if err != nil {
+		return fallback
+	}
+	return parsed
 }
