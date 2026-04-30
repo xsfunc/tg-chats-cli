@@ -45,15 +45,37 @@ type RunOptions struct {
 }
 
 func (a *App) Run(ctx context.Context, opts RunOptions) error {
+	if !opts.NonInteractive && !stdioIsTerminal() {
+		return fmt.Errorf("interactive mode requires a terminal; run from an interactive shell or pass --id for non-interactive export")
+	}
+
 	// Login
+	fmt.Fprintln(os.Stderr, "Connecting to Telegram...")
 	if err := a.tgClient.Login(ctx, os.Stdin); err != nil {
 		return fmt.Errorf("failed to login: %w", err)
 	}
+	fmt.Fprintln(os.Stderr, "Connected. Loading chats...")
 
 	if opts.NonInteractive {
 		return a.runNonInteractive(ctx, opts)
 	}
 	return a.runInteractiveTUI(ctx, opts)
+}
+
+func stdioIsTerminal() bool {
+	stdinInfo, err := os.Stdin.Stat()
+	if err != nil {
+		return false
+	}
+	stdoutInfo, err := os.Stdout.Stat()
+	if err != nil {
+		return false
+	}
+	return fileModeIsTerminal(stdinInfo.Mode()) && fileModeIsTerminal(stdoutInfo.Mode())
+}
+
+func fileModeIsTerminal(mode os.FileMode) bool {
+	return mode&os.ModeCharDevice != 0
 }
 
 func (a *App) runNonInteractive(ctx context.Context, opts RunOptions) error {

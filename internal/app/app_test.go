@@ -1,6 +1,7 @@
 package app
 
 import (
+	"os"
 	"testing"
 )
 
@@ -110,5 +111,37 @@ func TestSanitizeFilename_EdgeCases(t *testing.T) {
 	// Should not contain path traversal
 	if result == dangerous {
 		t.Errorf("sanitizeFilename should have modified dangerous path: %s", result)
+	}
+}
+
+func TestFileModeIsTerminal(t *testing.T) {
+	tests := []struct {
+		name string
+		mode os.FileMode
+		want bool
+	}{
+		{
+			name: "char device",
+			mode: os.ModeCharDevice,
+			want: true,
+		},
+		{
+			name: "regular file",
+			mode: 0644,
+			want: false,
+		},
+		{
+			name: "pipe",
+			mode: os.ModeNamedPipe,
+			want: false,
+		},
+	}
+
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			if got := fileModeIsTerminal(tt.mode); got != tt.want {
+				t.Fatalf("fileModeIsTerminal(%v) = %v, want %v", tt.mode, got, tt.want)
+			}
+		})
 	}
 }

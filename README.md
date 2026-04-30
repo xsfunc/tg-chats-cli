@@ -100,6 +100,7 @@ make run
 ```
 
 Note: Interactive mode runs entirely inside the TUI (single alt-screen session) and does not print status messages to stdout.
+It must be started from an interactive terminal. If stdin is piped or the command is run by a non-TTY wrapper, the app exits with a clear error; use `--id` for non-interactive exports.
 
 TUI quick keys:
 - `ctrl+c` to exit at any time.
