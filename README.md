@@ -54,7 +54,7 @@ Definition of Done (for tasks):
 
 ## Prerequisites
 
-- Go 1.25+
+- Go 1.26.2+
 - Telegram API credentials from [my.telegram.org](https://my.telegram.org)
 
 ## Quick Start
