@@ -20,7 +20,7 @@ This project uses Git hooks to ensure code quality before commits and pushes.
 After cloning the repository, run:
 
 ```bash
-make setup-hooks
+mise run setup-hooks
 ```
 
 This will ensure all hooks are executable. Alternatively:
@@ -52,5 +52,5 @@ git push --no-verify
 You can run linting manually at any time:
 
 ```bash
-make lint
+mise run lint
 ```

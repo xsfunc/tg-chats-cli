@@ -31,8 +31,8 @@ Where to look for common tasks:
 - Config or env updates: `internal/config/`.
 
 Testing and lint:
-- Run `make lint` before commits.
-- Run `make test` for unit tests.
+- Run `mise run lint` before commits.
+- Run `mise run test` for unit tests.
 - Go formatting is required via `gofmt`.
 
 Common pitfalls:
@@ -42,8 +42,8 @@ Common pitfalls:
 
 Pre-commit checklist:
 1. `gofmt` on changed Go files.
-2. `make lint`.
-3. `make test` (or the relevant subset).
+2. `mise run lint`.
+3. `mise run test` (or the relevant subset).
 4. Update `README.md` if behavior or structure changed.
 5. Check `git status -sb`.
 
@@ -54,6 +54,7 @@ Definition of Done (for tasks):
 
 ## Prerequisites
 
+- [mise](https://mise.jdx.dev/)
 - Go 1.26.2+
 - Telegram API credentials from [my.telegram.org](https://my.telegram.org)
 
@@ -64,7 +65,7 @@ cp .env.example .env
 sed -i 's/TG_APP_ID=.*/TG_APP_ID=123456/' .env
 sed -i 's/TG_APP_HASH=.*/TG_APP_HASH=your_api_hash/' .env
 sed -i 's/TG_PHONE=.*/TG_PHONE=+1234567890/' .env
-make build
+mise run build
 ./bin/tg-summary
 ```
 
@@ -72,6 +73,7 @@ make build
 
 1. Install dependencies:
    ```bash
+   mise install
    go mod download
    ```
 
@@ -90,13 +92,13 @@ make build
 ## Usage
 
 ```bash
-make build
+mise run build
 ./bin/tg-summary
 ```
 
 Or run directly:
 ```bash
-make run
+mise run run
 ```
 
 Note: Interactive mode runs entirely inside the TUI (single alt-screen session) and does not print status messages to stdout.
@@ -263,17 +265,17 @@ internal/tui/       - Bubble Tea TUI models for chat/topic selection
 
 | Command | Description |
 |---------|-------------|
-| `make` | Show help with all available commands |
-| `make all` | Full cycle: tidy, lint, test, build |
-| `make ci` | CI pipeline: clean build from scratch |
-| `make build` | Compile binary to `bin/` directory |
-| `make install` | Install to `$GOPATH/bin` |
-| `make run` | Run via `go run` (example: `make run ARGS="-since 24h"`) |
-| `make exec` | Build and run binary |
-| `make clean` | Clean build artifacts |
-| `make tidy` | Update dependencies (`go mod tidy`) |
-| `make lint` | Run golangci-lint |
-| `make test` | Run unit tests |
-| `make test-nocache` | Run tests without cache |
-| `make test-cover` | Run tests with coverage report |
-| `make setup-hooks` | Install git hooks |
+| `mise run` | Show help with all available commands |
+| `mise run all` | Full cycle: tidy, lint, test, build |
+| `mise run ci` | CI pipeline: clean build from scratch |
+| `mise run build` | Compile binary to `bin/` directory |
+| `mise run install` | Install to `$GOPATH/bin` |
+| `mise run run` | Run via `go run` (example: `mise run run -- --since 2024-01-01`) |
+| `mise run exec` | Build and run binary |
+| `mise run clean` | Clean build artifacts |
+| `mise run tidy` | Update dependencies (`go mod tidy`) |
+| `mise run lint` | Run golangci-lint |
+| `mise run test` | Run unit tests |
+| `mise run test-nocache` | Run tests without cache |
+| `mise run test-cover` | Run tests with coverage report |
+| `mise run setup-hooks` | Install git hooks |

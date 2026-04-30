@@ -1,0 +1,84 @@
+[tools]
+go = "1.26.2"
+golangci-lint = "2.11.4"
+
+[tasks.default]
+description = "Show all available tasks"
+run = "mise tasks ls"
+
+[tasks.help]
+description = "Show all available tasks"
+run = "mise tasks ls"
+
+[tasks.all]
+description = "Full cycle: deps, lint, test, build"
+run = [
+  "mise run tidy",
+  "mise run lint",
+  "mise run test",
+  "mise run build",
+]
+
+[tasks.ci]
+description = "CI pipeline: clean build from scratch"
+run = [
+  "mise run clean",
+  "mise run all",
+]
+
+[tasks.build]
+description = "Compile binary to bin/ directory"
+run = "go build -o bin/tg-summary ./cmd/tg-summary"
+
+[tasks.install]
+description = "Install to GOPATH/bin"
+run = "go install ./cmd/tg-summary"
+
+[tasks.run]
+description = "Run application via go run"
+run = "go run ./cmd/tg-summary"
+
+[tasks.exec]
+description = "Build and run binary"
+depends = ["build"]
+run = "./bin/tg-summary"
+
+[tasks.clean]
+description = "Clean build artifacts"
+run = "rm -rf bin/ coverage.out coverage.html"
+
+[tasks.tidy]
+description = "Update dependencies and verify modules"
+run = [
+  "go mod tidy",
+  "go mod verify",
+]
+
+[tasks.lint]
+description = "Run golangci-lint"
+run = "golangci-lint run ./..."
+
+[tasks.test]
+description = "Run unit tests"
+run = "go test ./... -v"
+
+[tasks.test-nocache]
+description = "Run tests without cache"
+run = "go test ./... -v -count=1"
+
+[tasks.test-cover]
+description = "Run tests with coverage report"
+run = [
+  "go test ./... -coverprofile=coverage.out",
+  "go tool cover -html=coverage.out -o coverage.html",
+  "printf 'Coverage report: coverage.html\\n'",
+]
+
+[tasks.setup-hooks]
+description = "Install git hooks"
+run = [
+  "printf 'Setting up git hooks...\\n'",
+  "test -f .git/hooks/pre-commit && chmod +x .git/hooks/pre-commit || true",
+  "test -f .git/hooks/pre-push && chmod +x .git/hooks/pre-push || true",
+  "printf 'Git hooks configured\\n'",
+]

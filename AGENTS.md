@@ -33,7 +33,7 @@
 - Before confirming changes, check `git status -sb`, `git diff`, and `git diff --staged`.
 - For quick rollback, prefer `git restore --staged .` and `git restore .`.
 - Use Conventional Commits: `type(scope): summary` (e.g., `feat(cli): add --json output`).
-- After implementing code changes (before commit), run `make lint`.
+- After implementing code changes (before commit), run `mise run lint`.
 
 ## Docs
 - After completing a task and running tests/lint, update `README.md` to reflect any new functionality or structure changes.
@@ -45,5 +45,5 @@
 - `git status -sb` is clean and diffs are understood.
 
 ## Tooling
-- Provide short aliases in `Makefile` or `Taskfile` for build, test, and lint.
+- Provide short `mise` tasks for build, test, and lint.
 - Consider pre-commit hooks for `gofmt` and a fast `go test` subset.
