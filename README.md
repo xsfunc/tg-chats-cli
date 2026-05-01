@@ -101,6 +101,24 @@ Or run directly:
 mise run run
 ```
 
+## Install From GitHub Releases With mise
+
+Release tags named `v*` publish Linux `x64` and `arm64` archives that the mise GitHub backend can autodetect.
+
+Create a release by pushing a version tag:
+```bash
+git tag v0.1.0
+git push origin v0.1.0
+```
+
+Then install the latest release on a VPS:
+```bash
+mise use -g github:username/cli-tg-chat-summary
+tg-summary
+```
+
+Replace `username` with the GitHub account or organization that owns the repository.
+
 Note: Interactive mode runs entirely inside the TUI (single alt-screen session) and does not print status messages to stdout.
 It must be started from an interactive terminal. If stdin is piped or the command is run by a non-TTY wrapper, the app exits with a clear error; use `--id` for non-interactive exports.
 
