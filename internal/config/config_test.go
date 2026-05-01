@@ -146,17 +146,30 @@ func TestLoad_Defaults(t *testing.T) {
 }
 
 func TestLoad_InvalidRateLimitFallsBackToDefault(t *testing.T) {
-	setEnv(t, "TG_APP_ID", "12345")
-	setEnv(t, "TG_APP_HASH", "testhash")
-	setEnv(t, "RATE_LIMIT_MS", "not_a_number")
-
-	cfg, err := Load()
-	if err != nil {
-		t.Fatalf("unexpected error: %v", err)
+	tests := []struct {
+		name  string
+		value string
+	}{
+		{name: "not a number", value: "not_a_number"},
+		{name: "zero", value: "0"},
+		{name: "negative", value: "-10"},
 	}
 
-	if cfg.RateLimitMs != 350 {
-		t.Errorf("expected default RateLimitMs 350 on invalid input, got %d", cfg.RateLimitMs)
+	for _, tt := range tests {
+		t.Run(tt.name, func(t *testing.T) {
+			setEnv(t, "TG_APP_ID", "12345")
+			setEnv(t, "TG_APP_HASH", "testhash")
+			setEnv(t, "RATE_LIMIT_MS", tt.value)
+
+			cfg, err := Load()
+			if err != nil {
+				t.Fatalf("unexpected error: %v", err)
+			}
+
+			if cfg.RateLimitMs != 350 {
+				t.Errorf("expected default RateLimitMs 350 on invalid input, got %d", cfg.RateLimitMs)
+			}
+		})
 	}
 }
 

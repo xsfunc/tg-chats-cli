@@ -169,7 +169,7 @@ Required:
 Optional:
 - `TG_PHONE` phone number for login.
 - `LOG_LEVEL` `debug|info|warn|error` (default `info`).
-- `RATE_LIMIT_MS` request interval in milliseconds (default `350`).
+- `RATE_LIMIT_MS` positive request interval in milliseconds (default `350`; non-positive values use the default).
 - `TG_CONNECT_TIMEOUT_SECONDS` maximum time to wait for Telegram client startup before aborting (default `60`, set `0` to disable).
 - `HISTORY_DELAY_MIN_MS` minimum pause between Telegram history pages (default `2000`).
 - `HISTORY_DELAY_MAX_MS` maximum pause between Telegram history pages (default `4000`).
@@ -192,7 +192,7 @@ These settings reduce risk but do not guarantee that Telegram will not limit or 
 ## CLI Flags
 
 - `--since YYYY-MM-DD` start date for export (enables date range mode).
-- `--until YYYY-MM-DD` end date for export (defaults to now when omitted).
+- `--until YYYY-MM-DD` end date for export (requires `--since`; defaults to now when omitted).
 - `--format <text|xml|xml-compact>` export format (default `text`).
 - `--id <int64>` chat ID (raw or `-100...`) to export without TUI.
 - `--topic-id <int>` forum topic ID for non-interactive mode.

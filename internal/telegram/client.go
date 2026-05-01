@@ -354,12 +354,7 @@ func (c *Client) processDialogs(dialogs []tg.DialogClass, chats []tg.ChatClass, 
 }
 
 func (c *Client) GetUnreadMessages(ctx context.Context, chatID int64, lastReadID int, progress ProgressFunc) ([]Message, error) {
-	inputPeer, ok := c.peerCache[chatID]
-	if !ok {
-		// Fallback to storage if not in cache (though unlikely for dialogs)
-		inputPeer = c.ctx.PeerStorage.GetInputPeerById(chatID)
-	}
-
+	inputPeer := c.resolvePeer(chatID)
 	if inputPeer == nil {
 		return nil, fmt.Errorf("peer %d not found in cache or storage", chatID)
 	}
@@ -391,12 +386,7 @@ func (c *Client) GetUnreadMessages(ctx context.Context, chatID int64, lastReadID
 }
 
 func (c *Client) MarkAsRead(ctx context.Context, chat Chat, maxID int) error {
-	inputPeer, ok := c.peerCache[chat.ID]
-	if !ok {
-		// Fallback to storage
-		inputPeer = c.ctx.PeerStorage.GetInputPeerById(chat.ID)
-	}
-
+	inputPeer := c.resolvePeer(chat.ID)
 	if inputPeer == nil {
 		return fmt.Errorf("peer %d not found", chat.ID)
 	}
@@ -435,35 +425,34 @@ func (c *Client) MarkAsRead(ctx context.Context, chat Chat, maxID int) error {
 
 // GetForumTopics fetches all topics from a forum with their unread counts.
 func (c *Client) GetForumTopics(ctx context.Context, chatID int64) ([]Topic, error) {
-	inputPeer, ok := c.peerCache[chatID]
-	if !ok {
-		inputPeer = c.ctx.PeerStorage.GetInputPeerById(chatID)
-	}
+	inputPeer := c.resolvePeer(chatID)
 	if inputPeer == nil {
 		return nil, fmt.Errorf("peer %d not found", chatID)
 	}
 
-	topics, err := c.ctx.Raw.MessagesGetForumTopics(ctx, &tg.MessagesGetForumTopicsRequest{
-		Peer:  inputPeer,
-		Limit: 100,
-	})
-	if err != nil {
-		return nil, fmt.Errorf("failed to get forum topics: %w", err)
-	}
-
+	const limit = 100
 	var result []Topic
-	for _, t := range topics.Topics {
-		topic, ok := t.(*tg.ForumTopic)
-		if !ok {
-			continue
-		}
-		result = append(result, Topic{
-			ID:           topic.ID,
-			Title:        topic.Title,
-			UnreadCount:  topic.UnreadCount,
-			LastReadID:   topic.ReadInboxMaxID,
-			TopMessageID: topic.TopMessage,
+	seen := make(map[int]struct{})
+	offset := forumTopicOffset{}
+
+	for {
+		topics, err := c.ctx.Raw.MessagesGetForumTopics(ctx, &tg.MessagesGetForumTopicsRequest{
+			Peer:        inputPeer,
+			OffsetDate:  offset.date,
+			OffsetID:    offset.id,
+			OffsetTopic: offset.topic,
+			Limit:       limit,
 		})
+		if err != nil {
+			return nil, fmt.Errorf("failed to get forum topics: %w", err)
+		}
+
+		result = appendForumTopics(result, seen, topics.Topics)
+		nextOffset, ok := nextForumTopicOffset(topics)
+		if !ok || len(topics.Topics) < limit || nextOffset == offset {
+			break
+		}
+		offset = nextOffset
 	}
 
 	return result, nil
@@ -471,10 +460,7 @@ func (c *Client) GetForumTopics(ctx context.Context, chatID int64) ([]Topic, err
 
 // GetTopicMessages fetches unread messages from a specific topic.
 func (c *Client) GetTopicMessages(ctx context.Context, chatID int64, topicID int, lastReadID int, progress ProgressFunc) ([]Message, error) {
-	inputPeer, ok := c.peerCache[chatID]
-	if !ok {
-		inputPeer = c.ctx.PeerStorage.GetInputPeerById(chatID)
-	}
+	inputPeer := c.resolvePeer(chatID)
 	if inputPeer == nil {
 		return nil, fmt.Errorf("peer %d not found", chatID)
 	}
@@ -523,10 +509,7 @@ func (c *Client) GetTopicMessages(ctx context.Context, chatID int64, topicID int
 
 // MarkTopicAsRead marks a specific topic as read up to the given message ID.
 func (c *Client) MarkTopicAsRead(ctx context.Context, chatID int64, topicID int, maxID int) error {
-	inputPeer, ok := c.peerCache[chatID]
-	if !ok {
-		inputPeer = c.ctx.PeerStorage.GetInputPeerById(chatID)
-	}
+	inputPeer := c.resolvePeer(chatID)
 	if inputPeer == nil {
 		return fmt.Errorf("peer %d not found", chatID)
 	}
@@ -545,10 +528,7 @@ func (c *Client) MarkTopicAsRead(ctx context.Context, chatID int64, topicID int,
 
 // GetMessagesByDate fetches messages within a specific date range.
 func (c *Client) GetMessagesByDate(ctx context.Context, chatID int64, since, until time.Time, progress ProgressFunc) ([]Message, error) {
-	inputPeer, ok := c.peerCache[chatID]
-	if !ok {
-		inputPeer = c.ctx.PeerStorage.GetInputPeerById(chatID)
-	}
+	inputPeer := c.resolvePeer(chatID)
 	if inputPeer == nil {
 		return nil, fmt.Errorf("peer %d not found", chatID)
 	}
@@ -586,10 +566,7 @@ func (c *Client) GetMessagesByDate(ctx context.Context, chatID int64, since, unt
 
 // GetTopicMessagesByDate fetches topic messages within a specific date range.
 func (c *Client) GetTopicMessagesByDate(ctx context.Context, chatID int64, topicID int, since, until time.Time, progress ProgressFunc) ([]Message, error) {
-	inputPeer, ok := c.peerCache[chatID]
-	if !ok {
-		inputPeer = c.ctx.PeerStorage.GetInputPeerById(chatID)
-	}
+	inputPeer := c.resolvePeer(chatID)
 	if inputPeer == nil {
 		return nil, fmt.Errorf("peer %d not found", chatID)
 	}
@@ -642,6 +619,16 @@ func (c *Client) GetTopicMessagesByDate(ctx context.Context, chatID int64, topic
 	)
 }
 
+func (c *Client) resolvePeer(chatID int64) tg.InputPeerClass {
+	if inputPeer, ok := c.peerCache[chatID]; ok {
+		return inputPeer
+	}
+	if c.ctx == nil || c.ctx.PeerStorage == nil {
+		return nil
+	}
+	return c.ctx.PeerStorage.GetInputPeerById(chatID)
+}
+
 func resolveSenderID(fromID tg.PeerClass) int64 {
 	if fromID == nil {
 		return 0
@@ -658,16 +645,79 @@ func resolveSenderID(fromID tg.PeerClass) int64 {
 	}
 }
 
-func extractMessagesAndUsers(result tg.MessagesMessagesClass) ([]tg.MessageClass, []tg.UserClass) {
+type forumTopicOffset struct {
+	date  int
+	id    int
+	topic int
+}
+
+func appendForumTopics(result []Topic, seen map[int]struct{}, topics []tg.ForumTopicClass) []Topic {
+	for _, t := range topics {
+		topic, ok := t.(*tg.ForumTopic)
+		if !ok {
+			continue
+		}
+		if _, ok := seen[topic.ID]; ok {
+			continue
+		}
+		seen[topic.ID] = struct{}{}
+		result = append(result, Topic{
+			ID:           topic.ID,
+			Title:        topic.Title,
+			UnreadCount:  topic.UnreadCount,
+			LastReadID:   topic.ReadInboxMaxID,
+			TopMessageID: topic.TopMessage,
+		})
+	}
+	return result
+}
+
+func nextForumTopicOffset(topics *tg.MessagesForumTopics) (forumTopicOffset, bool) {
+	for i := len(topics.Topics) - 1; i >= 0; i-- {
+		topic, ok := topics.Topics[i].(*tg.ForumTopic)
+		if !ok {
+			continue
+		}
+		offsetDate := topic.Date
+		if !topics.OrderByCreateDate {
+			if date := messageDateByID(topics.Messages, topic.TopMessage); date != 0 {
+				offsetDate = date
+			}
+		}
+		return forumTopicOffset{
+			date:  offsetDate,
+			id:    topic.TopMessage,
+			topic: topic.ID,
+		}, true
+	}
+	return forumTopicOffset{}, false
+}
+
+func messageDateByID(messages []tg.MessageClass, id int) int {
+	for _, m := range messages {
+		if m.GetID() != id {
+			continue
+		}
+		switch msg := m.(type) {
+		case *tg.Message:
+			return msg.Date
+		case *tg.MessageService:
+			return msg.Date
+		}
+	}
+	return 0
+}
+
+func extractMessages(result tg.MessagesMessagesClass) []tg.MessageClass {
 	switch r := result.(type) {
 	case *tg.MessagesMessages:
-		return r.Messages, r.Users
+		return r.Messages
 	case *tg.MessagesMessagesSlice:
-		return r.Messages, r.Users
+		return r.Messages
 	case *tg.MessagesChannelMessages:
-		return r.Messages, r.Users
+		return r.Messages
 	}
-	return nil, nil
+	return nil
 }
 
 func (c *Client) fetchMessages(
@@ -709,12 +759,12 @@ func (c *Client) fetchMessages(
 		}
 		page++
 
-		msgs, users := extractMessagesAndUsers(result)
+		msgs := extractMessages(result)
 		if len(msgs) == 0 {
 			break
 		}
 
-		batchMessages, lastID, stop := c.processMessageBatch(ctx, msgs, users, filter)
+		batchMessages, lastID, stop := processMessageBatch(msgs, filter)
 		allMessages = append(allMessages, batchMessages...)
 		reportProgress(progress, ProgressUpdate{
 			Phase:   phase,
@@ -724,6 +774,9 @@ func (c *Client) fetchMessages(
 		})
 
 		if stop {
+			break
+		}
+		if lastID == 0 {
 			break
 		}
 
@@ -736,7 +789,7 @@ func (c *Client) fetchMessages(
 	return allMessages, nil
 }
 
-func (c *Client) processMessageBatch(ctx context.Context, msgs []tg.MessageClass, _ []tg.UserClass,
+func processMessageBatch(msgs []tg.MessageClass,
 	filter func(msg *tg.Message) (process bool, stop bool)) ([]Message, int, bool) {
 
 	var results []Message
@@ -744,12 +797,12 @@ func (c *Client) processMessageBatch(ctx context.Context, msgs []tg.MessageClass
 	var stopLoop bool
 
 	for _, m := range msgs {
+		lastID = m.GetID()
+
 		msg, ok := m.(*tg.Message)
 		if !ok {
 			continue
 		}
-
-		lastID = msg.ID
 
 		process, stop := filter(msg)
 		if stop {
@@ -770,8 +823,6 @@ func (c *Client) processMessageBatch(ctx context.Context, msgs []tg.MessageClass
 	}
 	return results, lastID, stopLoop
 }
-
-// Helpers for middleware
 
 // Helpers for middleware
 

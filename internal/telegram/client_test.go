@@ -529,3 +529,73 @@ func TestFetchMessages_UsesOffsetDateOnFirstPage(t *testing.T) {
 		t.Fatalf("unexpected offsetDate: got %d want %d", seenOffsetDates[0], int(until.Unix()))
 	}
 }
+
+func TestProcessMessageBatch_AdvancesCursorForServiceMessages(t *testing.T) {
+	msgs := []tg.MessageClass{
+		&tg.Message{
+			ID:      200,
+			Date:    1000,
+			Message: "exported",
+			FromID:  &tg.PeerUser{UserID: 42},
+		},
+		&tg.MessageService{
+			ID:   199,
+			Date: 999,
+		},
+	}
+
+	got, lastID, stop := processMessageBatch(msgs, func(*tg.Message) (bool, bool) {
+		return true, false
+	})
+	if stop {
+		t.Fatal("unexpected stop")
+	}
+	if lastID != 199 {
+		t.Fatalf("expected last cursor id 199, got %d", lastID)
+	}
+	if len(got) != 1 {
+		t.Fatalf("expected 1 exported message, got %d", len(got))
+	}
+	if got[0].ID != 200 || got[0].SenderID != 42 {
+		t.Fatalf("unexpected exported message: %+v", got[0])
+	}
+}
+
+func TestNextForumTopicOffset_UsesTopMessageDate(t *testing.T) {
+	page := &tg.MessagesForumTopics{
+		Topics: []tg.ForumTopicClass{
+			&tg.ForumTopic{ID: 7, Date: 100, TopMessage: 50},
+		},
+		Messages: []tg.MessageClass{
+			&tg.MessageService{ID: 50, Date: 1234},
+		},
+	}
+
+	offset, ok := nextForumTopicOffset(page)
+	if !ok {
+		t.Fatal("expected offset")
+	}
+	if offset.topic != 7 || offset.id != 50 || offset.date != 1234 {
+		t.Fatalf("unexpected offset: %+v", offset)
+	}
+}
+
+func TestNextForumTopicOffset_UsesTopicDateWhenOrderedByCreateDate(t *testing.T) {
+	page := &tg.MessagesForumTopics{
+		OrderByCreateDate: true,
+		Topics: []tg.ForumTopicClass{
+			&tg.ForumTopic{ID: 7, Date: 100, TopMessage: 50},
+		},
+		Messages: []tg.MessageClass{
+			&tg.Message{ID: 50, Date: 1234},
+		},
+	}
+
+	offset, ok := nextForumTopicOffset(page)
+	if !ok {
+		t.Fatal("expected offset")
+	}
+	if offset.topic != 7 || offset.id != 50 || offset.date != 100 {
+		t.Fatalf("unexpected offset: %+v", offset)
+	}
+}

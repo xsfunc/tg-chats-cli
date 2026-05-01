@@ -53,6 +53,9 @@ func Load() (*Config, error) {
 			rateLimit = r
 		}
 	}
+	if rateLimit <= 0 {
+		rateLimit = 350
+	}
 
 	connectTimeout := intEnv("TG_CONNECT_TIMEOUT_SECONDS", 60)
 	if connectTimeout < 0 {
