@@ -36,6 +36,7 @@ Testing and lint:
 - Run `mise run lint` before commits.
 - Run `mise run test` for unit tests.
 - Go formatting is required via `gofmt`.
+- In restricted Codex sandboxes, run `MISE_CACHE_DIR=/tmp/mise-cache mise run lint` if `mise` itself warns about read-only `~/.cache/mise`.
 
 Common pitfalls:
 - Do not change public APIs without explicit request.

@@ -2,6 +2,12 @@
 go = "1.26.2"
 golangci-lint = "2.11.4"
 
+[env]
+TMPDIR = "/tmp"
+GOCACHE = "/tmp/go-build"
+GOLANGCI_LINT_CACHE = "/tmp/golangci-lint-cache"
+MISE_CACHE_DIR = "/tmp/mise-cache"
+
 [tasks.default]
 description = "Show all available tasks"
 run = "mise tasks ls"
@@ -56,7 +62,7 @@ run = [
 
 [tasks.lint]
 description = "Run golangci-lint"
-run = "golangci-lint run ./..."
+run = "golangci-lint run --allow-parallel-runners ./..."
 
 [tasks.test]
 description = "Run unit tests"
