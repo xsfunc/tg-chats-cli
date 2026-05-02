@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"cli-tg-chat-summary/internal/config"
+	"cli-tg-chat-summary/internal/store"
 	"cli-tg-chat-summary/internal/telegram"
 )
 
@@ -15,6 +16,7 @@ type App struct {
 	cfg      *config.Config
 	tgClient *telegram.Client
 	exporter Exporter
+	store    *store.Store
 }
 
 func New(cfg *config.Config, tgClient *telegram.Client) *App {
@@ -37,6 +39,10 @@ type RunOptions struct {
 	Until          time.Time
 	UseDateRange   bool
 	ExportFormat   string
+	Command        string
+	DBPath         string
+	ChatLimit      int
+	MessageLimit   int
 	ChatID         int64
 	ChatIDRaw      int64
 	TopicID        int
@@ -45,8 +51,17 @@ type RunOptions struct {
 }
 
 func (a *App) Run(ctx context.Context, opts RunOptions) error {
-	if !opts.NonInteractive && !stdioIsTerminal() {
-		return fmt.Errorf("interactive mode requires a terminal; run from an interactive shell or pass --id for non-interactive export")
+	if opts.Command == "" {
+		opts.Command = "history"
+	}
+	if opts.DBPath == "" {
+		opts.DBPath = store.DefaultPath
+	}
+	if opts.ExportFormat != "" {
+		return fmt.Errorf("--format is not supported in DB modes")
+	}
+	if opts.Command != "sync" && !opts.NonInteractive && !stdioIsTerminal() {
+		return fmt.Errorf("interactive mode requires a terminal; run from an interactive shell or pass --id for non-interactive history")
 	}
 
 	// Login
@@ -56,8 +71,20 @@ func (a *App) Run(ctx context.Context, opts RunOptions) error {
 	}
 	fmt.Fprintln(os.Stderr, "Connected. Loading chats...")
 
+	db, err := store.Open(ctx, opts.DBPath)
+	if err != nil {
+		return fmt.Errorf("open sqlite store: %w", err)
+	}
+	defer func() {
+		_ = db.Close()
+	}()
+	a.store = db
+
+	if opts.Command == "sync" {
+		return a.runSync(ctx, opts)
+	}
 	if opts.NonInteractive {
-		return a.runNonInteractive(ctx, opts)
+		return a.runNonInteractiveHistory(ctx, opts)
 	}
 	return a.runInteractiveTUI(ctx, opts)
 }
@@ -78,11 +105,18 @@ func fileModeIsTerminal(mode os.FileMode) bool {
 	return mode&os.ModeCharDevice != 0
 }
 
-func (a *App) runNonInteractive(ctx context.Context, opts RunOptions) error {
-	chats, err := a.tgClient.GetDialogs(ctx)
+func (a *App) runNonInteractiveHistory(ctx context.Context, opts RunOptions) error {
+	dialogs, err := a.tgClient.GetDialogsWithEntities(ctx)
 	if err != nil {
 		return fmt.Errorf("failed to get dialogs: %w", err)
 	}
+	if err := a.store.SaveUsers(ctx, dialogs.Users); err != nil {
+		return err
+	}
+	if err := a.store.SaveChats(ctx, dialogs.Chats); err != nil {
+		return err
+	}
+	chats := dialogs.Chats
 
 	if len(chats) == 0 {
 		fmt.Fprintln(os.Stderr, "No chats found.")
@@ -107,6 +141,9 @@ func (a *App) runNonInteractive(ctx context.Context, opts RunOptions) error {
 		if err != nil {
 			return fmt.Errorf("failed to get forum topics: %w", err)
 		}
+		if err := a.store.SaveTopics(ctx, selectedChat.ID, topics); err != nil {
+			return err
+		}
 		selectedTopic, err = selectForumTopic(topics, opts.TopicID, opts.TopicTitle)
 		if err != nil {
 			return err
@@ -116,27 +153,55 @@ func (a *App) runNonInteractive(ctx context.Context, opts RunOptions) error {
 		}
 	}
 
-	plan, err := a.buildFetchPlan(*selectedChat, selectedTopic, opts)
+	run, err := a.store.StartRun(ctx, "history")
 	if err != nil {
 		return err
 	}
-	messages, err := plan.fetch(ctx, nil)
+	status := "ok"
+	var runErr error
+	defer func() {
+		_ = a.store.FinishRun(ctx, run.ID, status, runErr)
+	}()
+
+	plan, err := a.buildFetchPlan(*selectedChat, selectedTopic, opts)
 	if err != nil {
+		status = "error"
+		runErr = err
+		return err
+	}
+	result, err := plan.fetch(ctx, nil)
+	if err != nil {
+		status = "error"
+		runErr = err
 		return err
 	}
 
-	if len(messages) == 0 {
-		fmt.Fprintln(os.Stderr, "No text messages found to export.")
+	saved, err := a.saveFetchResult(ctx, *selectedChat, selectedTopic, result)
+	if err != nil {
+		status = "error"
+		runErr = err
+		return err
+	}
+	markResult := a.markMessagesAsRead(ctx, *selectedChat, selectedTopic, result, opts)
+	if err := a.store.AddRunItem(ctx, store.RunItem{
+		RunID:          run.ID,
+		ChatID:         selectedChat.ID,
+		TopicID:        topicID(selectedTopic),
+		SavedMessages:  saved,
+		MarkReadStatus: formatMarkReadStatus(markResult),
+		Warning:        markResult.Warning,
+	}); err != nil {
+		status = "error"
+		runErr = err
+		return err
+	}
+
+	if saved == 0 {
+		fmt.Fprintln(os.Stderr, "No text messages found to save.")
 		return nil
 	}
 
-	filename, err := a.exportMessages(plan.exportTitle, messages, opts)
-	if err != nil {
-		return err
-	}
-
-	fmt.Fprintf(os.Stderr, "Successfully exported %d messages to %s\n", len(messages), filename)
-	markResult := a.markMessagesAsRead(ctx, *selectedChat, selectedTopic, messages, opts)
+	fmt.Fprintf(os.Stderr, "Successfully saved %d messages to %s\n", saved, opts.DBPath)
 	printMarkReadStatus(markResult)
 	return nil
 }
@@ -202,37 +267,48 @@ func formatTopicCandidates(topics []telegram.Topic) string {
 	return strings.Join(parts, ", ")
 }
 
-func (a *App) exportMessages(exportTitle string, messages []telegram.Message, opts RunOptions) (string, error) {
-	// Sort messages by date (oldest first)
-	// fetched messages are usually newest first from history?
-	// `GetUnreadMessages` implementation appended them as they came.
-	// If we used `MessagesGetHistory` without offset loop, we got newest first.
-	// Let's reverse to have chronological order for reading.
-	for i := len(messages)/2 - 1; i >= 0; i-- {
-		opp := len(messages) - 1 - i
-		messages[i], messages[opp] = messages[opp], messages[i]
-	}
-
-	// Export to file
-	// format: ChatName_Date.txt or ChatName_TopicName_Date.txt
-	// date range format: ChatName_YYYY-MM-DD_to_YYYY-MM-DD.txt
-	filename, err := a.exporter.Export(exportTitle, messages, opts)
-	if err != nil {
-		return "", fmt.Errorf("failed to export: %w", err)
-	}
-
-	return filename, nil
-}
-
 type markReadResult struct {
 	Attempted bool
 	Err       error
+	Warning   string
 }
 
-func (a *App) markMessagesAsRead(ctx context.Context, selectedChat telegram.Chat, selectedTopic *telegram.Topic, messages []telegram.Message, opts RunOptions) markReadResult {
+func (a *App) saveFetchResult(ctx context.Context, selectedChat telegram.Chat, selectedTopic *telegram.Topic, result telegram.MessageFetchResult) (int, error) {
+	if a.store == nil {
+		return 0, fmt.Errorf("sqlite store is not initialized")
+	}
+	if err := a.store.SaveUsers(ctx, result.Users); err != nil {
+		return 0, err
+	}
+	chats := append([]telegram.Chat{selectedChat}, result.Chats...)
+	if err := a.store.SaveChats(ctx, chats); err != nil {
+		return 0, err
+	}
+	if selectedTopic != nil {
+		if err := a.store.SaveTopics(ctx, selectedChat.ID, []telegram.Topic{*selectedTopic}); err != nil {
+			return 0, err
+		}
+	}
+	return a.store.SaveMessages(ctx, selectedChat.ID, topicID(selectedTopic), result.Messages)
+}
+
+func topicID(topic *telegram.Topic) int {
+	if topic == nil {
+		return 0
+	}
+	return topic.ID
+}
+
+func (a *App) markMessagesAsRead(ctx context.Context, selectedChat telegram.Chat, selectedTopic *telegram.Topic, result telegram.MessageFetchResult, opts RunOptions) markReadResult {
+	if opts.UseDateRange {
+		return markReadResult{}
+	}
+	if result.Truncated {
+		return markReadResult{Warning: "skipped mark-as-read because message limit truncated unread messages"}
+	}
 	// Mark as read
 	maxID := 0
-	for _, msg := range messages {
+	for _, msg := range result.Messages {
 		if msg.ID > maxID {
 			maxID = msg.ID
 		}
@@ -260,6 +336,9 @@ func sanitizeFilename(name string) string {
 }
 
 func formatMarkReadStatus(result markReadResult) string {
+	if result.Warning != "" {
+		return "Warning: " + result.Warning
+	}
 	if !result.Attempted {
 		return ""
 	}
@@ -270,6 +349,10 @@ func formatMarkReadStatus(result markReadResult) string {
 }
 
 func printMarkReadStatus(result markReadResult) {
+	if result.Warning != "" {
+		fmt.Fprintf(os.Stderr, "Warning: %s\n", result.Warning)
+		return
+	}
 	if !result.Attempted {
 		return
 	}

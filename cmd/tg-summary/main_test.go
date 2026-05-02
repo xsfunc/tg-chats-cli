@@ -45,6 +45,7 @@ func TestNormalizeChatID(t *testing.T) {
 
 func TestParseRunOptions_DateRange(t *testing.T) {
 	opts, err := parseRunOptions([]string{
+		"history",
 		"--id", "-1001234567890",
 		"--since", "2024-01-01",
 		"--until", "2024-01-31",
@@ -68,6 +69,51 @@ func TestParseRunOptions_DateRange(t *testing.T) {
 	}
 	if !opts.Until.Equal(wantUntil) {
 		t.Fatalf("unexpected until: got %v want %v", opts.Until, wantUntil)
+	}
+}
+
+func TestParseRunOptions_Sync(t *testing.T) {
+	opts, err := parseRunOptions([]string{
+		"sync",
+		"--id", "-1001234567890",
+		"--chat-limit", "5",
+		"--message-limit", "10",
+		"--db", "tmp/tg.db",
+	}, fixedNow)
+	if err != nil {
+		t.Fatalf("parseRunOptions error: %v", err)
+	}
+	if opts.Command != "sync" {
+		t.Fatalf("command = %q, want sync", opts.Command)
+	}
+	if !opts.NonInteractive {
+		t.Fatal("expected sync to be non-interactive")
+	}
+	if opts.ChatID != 1234567890 || opts.ChatIDRaw != -1001234567890 {
+		t.Fatalf("unexpected chat ids: raw=%d normalized=%d", opts.ChatIDRaw, opts.ChatID)
+	}
+	if opts.ChatLimit != 5 || opts.MessageLimit != 10 || opts.DBPath != "tmp/tg.db" {
+		t.Fatalf("unexpected limits/db: %+v", opts)
+	}
+}
+
+func TestParseRunOptions_RejectsFormat(t *testing.T) {
+	_, err := parseRunOptions([]string{"history", "--format", "xml"}, fixedNow)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "--format is not supported") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
+func TestParseRunOptions_SyncRejectsDateRange(t *testing.T) {
+	_, err := parseRunOptions([]string{"sync", "--since", "2024-01-01"}, fixedNow)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "sync does not support --since/--until") {
+		t.Fatalf("unexpected error: %v", err)
 	}
 }
 

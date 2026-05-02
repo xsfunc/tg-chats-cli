@@ -34,8 +34,8 @@ type topicsLoadedMsg struct {
 }
 
 type fetchResultMsg struct {
-	messages []telegram.Message
-	err      error
+	result telegram.MessageFetchResult
+	err    error
 }
 
 type appModel struct {
@@ -234,17 +234,16 @@ func (m appModel) handleFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
 	if msg.err != nil {
 		return m.setMessage("Error", msg.err.Error(), "Press Enter to exit.", stateExit, msg.err), nil
 	}
-	if len(msg.messages) == 0 {
-		return m.setMessage("", "No text messages found to export.", "Press Enter to return.", stateLoadingChats, nil), nil
-	}
-
-	filename, err := m.app.exportMessages(m.exportTitle, msg.messages, m.opts)
+	saved, err := m.app.saveFetchResult(m.ctx, *m.selectedChat, m.selectedTopic, msg.result)
 	if err != nil {
 		return m.setMessage("Error", err.Error(), "Press Enter to exit.", stateExit, err), nil
 	}
+	if saved == 0 {
+		return m.setMessage("", "No text messages found to save.", "Press Enter to return.", stateLoadingChats, nil), nil
+	}
 
-	markResult := m.app.markMessagesAsRead(m.ctx, *m.selectedChat, m.selectedTopic, msg.messages, m.opts)
-	m.summary = tui.NewSummaryModel(m.exportTitle, filename, len(msg.messages), formatMarkReadStatus(markResult))
+	markResult := m.app.markMessagesAsRead(m.ctx, *m.selectedChat, m.selectedTopic, msg.result, m.opts)
+	m.summary = tui.NewSummaryModel(m.exportTitle, m.opts.DBPath, saved, formatMarkReadStatus(markResult))
 	m.state = stateSummary
 	return m, nil
 }

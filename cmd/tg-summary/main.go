@@ -56,21 +56,64 @@ func parseRunOptions(args []string, now func() time.Time) (app.RunOptions, error
 	var chatIDRaw int64
 	var topicID int
 	var topicTitle string
+	var dbPath string
+	var chatLimit int
+	var messageLimit int
+	command := "history"
+
+	if len(args) > 0 && args[0] != "" && args[0][0] != '-' {
+		switch args[0] {
+		case "history", "sync":
+			command = args[0]
+			args = args[1:]
+		default:
+			return app.RunOptions{}, fmt.Errorf("unknown command %q (available: history, sync)", args[0])
+		}
+	}
 
 	fs := flag.NewFlagSet("tg-summary", flag.ContinueOnError)
 	fs.StringVar(&sinceStr, "since", "", "Start date (YYYY-MM-DD)")
 	fs.StringVar(&untilStr, "until", "", "End date (YYYY-MM-DD)")
-	fs.StringVar(&formatName, "format", "text", "Export format (text, xml, xml-compact)")
+	fs.StringVar(&formatName, "format", "", "Deprecated: file export format is not supported in DB modes")
 	fs.Int64Var(&chatIDRaw, "id", 0, "Chat ID (raw or -100... format) to export without TUI")
 	fs.IntVar(&topicID, "topic-id", 0, "Forum topic ID (required for forum chats in non-interactive mode)")
 	fs.StringVar(&topicTitle, "topic", "", "Forum topic title (alternative to --topic-id)")
+	fs.StringVar(&dbPath, "db", "", "SQLite database path")
+	fs.IntVar(&chatLimit, "chat-limit", 0, "Maximum unread chats to sync (0 means unlimited)")
+	fs.IntVar(&messageLimit, "message-limit", 0, "Maximum messages per chat/topic (0 means unlimited)")
 	if err := fs.Parse(args); err != nil {
 		return app.RunOptions{}, err
+	}
+	visited := make(map[string]bool)
+	fs.Visit(func(f *flag.Flag) {
+		visited[f.Name] = true
+	})
+	if visited["format"] {
+		return app.RunOptions{}, fmt.Errorf("--format is not supported in DB modes")
+	}
+	if chatLimit < 0 {
+		return app.RunOptions{}, fmt.Errorf("--chat-limit cannot be negative")
+	}
+	if messageLimit < 0 {
+		return app.RunOptions{}, fmt.Errorf("--message-limit cannot be negative")
+	}
+	if command == "sync" && (sinceStr != "" || untilStr != "") {
+		return app.RunOptions{}, fmt.Errorf("sync does not support --since/--until; it only saves unread messages")
+	}
+	if command == "history" && chatLimit != 0 {
+		return app.RunOptions{}, fmt.Errorf("--chat-limit is only supported by sync")
 	}
 
 	var opts app.RunOptions
 	var err error
+	opts.Command = command
 	opts.ExportFormat = formatName
+	opts.DBPath = dbPath
+	opts.ChatLimit = chatLimit
+	opts.MessageLimit = messageLimit
+	if command == "sync" {
+		opts.NonInteractive = true
+	}
 
 	if chatIDRaw != 0 {
 		opts.NonInteractive = true

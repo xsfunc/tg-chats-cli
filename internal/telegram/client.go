@@ -57,6 +57,32 @@ type Message struct {
 	Date     time.Time
 	Text     string
 	SenderID int64
+	Outgoing bool
+	EditDate time.Time
+}
+
+type User struct {
+	ID        int64
+	Username  string
+	FirstName string
+	LastName  string
+	IsBot     bool
+}
+
+type DialogsResult struct {
+	Chats []Chat
+	Users []User
+}
+
+type MessageFetchOptions struct {
+	MessageLimit int
+}
+
+type MessageFetchResult struct {
+	Messages  []Message
+	Users     []User
+	Chats     []Chat
+	Truncated bool
 }
 
 type ProgressUpdate struct {
@@ -188,13 +214,23 @@ func (c *Client) startClient(opts *gotgproto.ClientOpts, cancelClient context.Ca
 }
 
 func (c *Client) GetDialogs(ctx context.Context) ([]Chat, error) {
+	result, err := c.GetDialogsWithEntities(ctx)
+	if err != nil {
+		return nil, err
+	}
+	return result.Chats, nil
+}
+
+func (c *Client) GetDialogsWithEntities(ctx context.Context) (DialogsResult, error) {
 	if c.ctx == nil {
 		c.ctx = c.proto.CreateContext()
 	}
 
 	const limit = 100
 	var parsedDialogs []Chat
+	var users []User
 	seen := make(map[int64]struct{})
+	seenUsers := make(map[int64]struct{})
 
 	offsetPeer := tg.InputPeerClass(&tg.InputPeerEmpty{})
 	offsetID := 0
@@ -208,7 +244,7 @@ func (c *Client) GetDialogs(ctx context.Context) ([]Chat, error) {
 			OffsetDate: offsetDate,
 		})
 		if err != nil {
-			return nil, fmt.Errorf("failed to get dialogs: %w", err)
+			return DialogsResult{}, fmt.Errorf("failed to get dialogs: %w", err)
 		}
 
 		var batch []Chat
@@ -217,6 +253,7 @@ func (c *Client) GetDialogs(ctx context.Context) ([]Chat, error) {
 		switch d := dialogs.(type) {
 		case *tg.MessagesDialogsSlice:
 			batch = c.processDialogs(d.Dialogs, d.Chats, d.Users)
+			users = appendUsers(users, seenUsers, d.Users)
 			if len(d.Dialogs) > 0 {
 				if dlg, ok := d.Dialogs[len(d.Dialogs)-1].(*tg.Dialog); ok {
 					lastDialog = dlg
@@ -224,6 +261,7 @@ func (c *Client) GetDialogs(ctx context.Context) ([]Chat, error) {
 			}
 		case *tg.MessagesDialogs:
 			batch = c.processDialogs(d.Dialogs, d.Chats, d.Users)
+			users = appendUsers(users, seenUsers, d.Users)
 			if len(d.Dialogs) > 0 {
 				if dlg, ok := d.Dialogs[len(d.Dialogs)-1].(*tg.Dialog); ok {
 					lastDialog = dlg
@@ -261,28 +299,18 @@ func (c *Client) GetDialogs(ctx context.Context) ([]Chat, error) {
 		return parsedDialogs[i].UnreadCount > parsedDialogs[j].UnreadCount
 	})
 
-	return parsedDialogs, nil
+	return DialogsResult{Chats: parsedDialogs, Users: users}, nil
 }
 
 func (c *Client) processDialogs(dialogs []tg.DialogClass, chats []tg.ChatClass, users []tg.UserClass) []Chat {
+	c.processPeerEntities(chats, users)
 	chatMap := make(map[int64]tg.ChatClass)
 	for _, ch := range chats {
 		chatMap[ch.GetID()] = ch
-		switch item := ch.(type) {
-		case *tg.Chat:
-			c.peerCache[item.ID] = &tg.InputPeerChat{ChatID: item.ID}
-		case *tg.Channel:
-			c.peerCache[item.ID] = &tg.InputPeerChannel{ChannelID: item.ID, AccessHash: item.AccessHash}
-			c.channelCache[item.ID] = item // Cache for forum operations
-		}
 	}
 	userMap := make(map[int64]tg.UserClass)
 	for _, u := range users {
 		userMap[u.GetID()] = u
-		switch item := u.(type) {
-		case *tg.User:
-			c.peerCache[item.ID] = &tg.InputPeerUser{UserID: item.ID, AccessHash: item.AccessHash}
-		}
 	}
 
 	var results []Chat
@@ -353,10 +381,92 @@ func (c *Client) processDialogs(dialogs []tg.DialogClass, chats []tg.ChatClass, 
 	return results
 }
 
+func (c *Client) processPeerEntities(chats []tg.ChatClass, users []tg.UserClass) {
+	for _, ch := range chats {
+		switch item := ch.(type) {
+		case *tg.Chat:
+			c.peerCache[item.ID] = &tg.InputPeerChat{ChatID: item.ID}
+		case *tg.Channel:
+			c.peerCache[item.ID] = &tg.InputPeerChannel{ChannelID: item.ID, AccessHash: item.AccessHash}
+			c.channelCache[item.ID] = item
+		}
+	}
+	for _, u := range users {
+		switch item := u.(type) {
+		case *tg.User:
+			c.peerCache[item.ID] = &tg.InputPeerUser{UserID: item.ID, AccessHash: item.AccessHash}
+		}
+	}
+}
+
+func (c *Client) chatsFromEntities(chats []tg.ChatClass, users []tg.UserClass) []Chat {
+	var result []Chat
+	for _, ch := range chats {
+		switch item := ch.(type) {
+		case *tg.Chat:
+			result = append(result, Chat{
+				ID:    item.ID,
+				Title: item.Title,
+			})
+		case *tg.Channel:
+			result = append(result, Chat{
+				ID:        item.ID,
+				Title:     item.Title,
+				IsChannel: true,
+				IsForum:   item.Forum,
+			})
+		}
+	}
+	for _, u := range users {
+		user, ok := u.(*tg.User)
+		if !ok {
+			continue
+		}
+		title := user.FirstName + " " + user.LastName
+		if user.Username != "" {
+			title += " (@" + user.Username + ")"
+		}
+		if title == " " {
+			title = fmt.Sprintf("Unknown Peer %d", user.ID)
+		}
+		result = append(result, Chat{
+			ID:     user.ID,
+			Title:  title,
+			IsUser: true,
+			IsBot:  user.Bot,
+		})
+	}
+	return result
+}
+
+func dedupeChats(chats []Chat) []Chat {
+	result := make([]Chat, 0, len(chats))
+	seen := make(map[int64]struct{})
+	for _, chat := range chats {
+		if chat.ID == 0 {
+			continue
+		}
+		if _, ok := seen[chat.ID]; ok {
+			continue
+		}
+		seen[chat.ID] = struct{}{}
+		result = append(result, chat)
+	}
+	return result
+}
+
 func (c *Client) GetUnreadMessages(ctx context.Context, chatID int64, lastReadID int, progress ProgressFunc) ([]Message, error) {
+	result, err := c.GetUnreadMessagesWithOptions(ctx, chatID, lastReadID, progress, MessageFetchOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return result.Messages, nil
+}
+
+func (c *Client) GetUnreadMessagesWithOptions(ctx context.Context, chatID int64, lastReadID int, progress ProgressFunc, opts MessageFetchOptions) (MessageFetchResult, error) {
 	inputPeer := c.resolvePeer(chatID)
 	if inputPeer == nil {
-		return nil, fmt.Errorf("peer %d not found in cache or storage", chatID)
+		return MessageFetchResult{}, fmt.Errorf("peer %d not found in cache or storage", chatID)
 	}
 
 	return c.fetchMessages(
@@ -382,6 +492,7 @@ func (c *Client) GetUnreadMessages(ctx context.Context, chatID int64, lastReadID
 			}
 			return true, false // Process
 		},
+		opts,
 	)
 }
 
@@ -460,9 +571,17 @@ func (c *Client) GetForumTopics(ctx context.Context, chatID int64) ([]Topic, err
 
 // GetTopicMessages fetches unread messages from a specific topic.
 func (c *Client) GetTopicMessages(ctx context.Context, chatID int64, topicID int, lastReadID int, progress ProgressFunc) ([]Message, error) {
+	result, err := c.GetTopicMessagesWithOptions(ctx, chatID, topicID, lastReadID, progress, MessageFetchOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return result.Messages, nil
+}
+
+func (c *Client) GetTopicMessagesWithOptions(ctx context.Context, chatID int64, topicID int, lastReadID int, progress ProgressFunc, opts MessageFetchOptions) (MessageFetchResult, error) {
 	inputPeer := c.resolvePeer(chatID)
 	if inputPeer == nil {
-		return nil, fmt.Errorf("peer %d not found", chatID)
+		return MessageFetchResult{}, fmt.Errorf("peer %d not found", chatID)
 	}
 
 	return c.fetchMessages(
@@ -504,6 +623,7 @@ func (c *Client) GetTopicMessages(ctx context.Context, chatID int64, topicID int
 			}
 			return true, false // Process
 		},
+		opts,
 	)
 }
 
@@ -528,9 +648,17 @@ func (c *Client) MarkTopicAsRead(ctx context.Context, chatID int64, topicID int,
 
 // GetMessagesByDate fetches messages within a specific date range.
 func (c *Client) GetMessagesByDate(ctx context.Context, chatID int64, since, until time.Time, progress ProgressFunc) ([]Message, error) {
+	result, err := c.GetMessagesByDateWithOptions(ctx, chatID, since, until, progress, MessageFetchOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return result.Messages, nil
+}
+
+func (c *Client) GetMessagesByDateWithOptions(ctx context.Context, chatID int64, since, until time.Time, progress ProgressFunc, opts MessageFetchOptions) (MessageFetchResult, error) {
 	inputPeer := c.resolvePeer(chatID)
 	if inputPeer == nil {
-		return nil, fmt.Errorf("peer %d not found", chatID)
+		return MessageFetchResult{}, fmt.Errorf("peer %d not found", chatID)
 	}
 
 	return c.fetchMessages(
@@ -561,14 +689,23 @@ func (c *Client) GetMessagesByDate(ctx context.Context, chatID int64, since, unt
 			}
 			return true, false // Process
 		},
+		opts,
 	)
 }
 
 // GetTopicMessagesByDate fetches topic messages within a specific date range.
 func (c *Client) GetTopicMessagesByDate(ctx context.Context, chatID int64, topicID int, since, until time.Time, progress ProgressFunc) ([]Message, error) {
+	result, err := c.GetTopicMessagesByDateWithOptions(ctx, chatID, topicID, since, until, progress, MessageFetchOptions{})
+	if err != nil {
+		return nil, err
+	}
+	return result.Messages, nil
+}
+
+func (c *Client) GetTopicMessagesByDateWithOptions(ctx context.Context, chatID int64, topicID int, since, until time.Time, progress ProgressFunc, opts MessageFetchOptions) (MessageFetchResult, error) {
 	inputPeer := c.resolvePeer(chatID)
 	if inputPeer == nil {
-		return nil, fmt.Errorf("peer %d not found", chatID)
+		return MessageFetchResult{}, fmt.Errorf("peer %d not found", chatID)
 	}
 
 	return c.fetchMessages(
@@ -616,6 +753,7 @@ func (c *Client) GetTopicMessagesByDate(ctx context.Context, chatID int64, topic
 			}
 			return true, false // Process
 		},
+		opts,
 	)
 }
 
@@ -672,6 +810,27 @@ func appendForumTopics(result []Topic, seen map[int]struct{}, topics []tg.ForumT
 	return result
 }
 
+func appendUsers(result []User, seen map[int64]struct{}, users []tg.UserClass) []User {
+	for _, item := range users {
+		user, ok := item.(*tg.User)
+		if !ok {
+			continue
+		}
+		if _, ok := seen[user.ID]; ok {
+			continue
+		}
+		seen[user.ID] = struct{}{}
+		result = append(result, User{
+			ID:        user.ID,
+			Username:  user.Username,
+			FirstName: user.FirstName,
+			LastName:  user.LastName,
+			IsBot:     user.Bot,
+		})
+	}
+	return result
+}
+
 func nextForumTopicOffset(topics *tg.MessagesForumTopics) (forumTopicOffset, bool) {
 	for i := len(topics.Topics) - 1; i >= 0; i-- {
 		topic, ok := topics.Topics[i].(*tg.ForumTopic)
@@ -720,6 +879,30 @@ func extractMessages(result tg.MessagesMessagesClass) []tg.MessageClass {
 	return nil
 }
 
+func extractMessageUsers(result tg.MessagesMessagesClass) []tg.UserClass {
+	switch r := result.(type) {
+	case *tg.MessagesMessages:
+		return r.Users
+	case *tg.MessagesMessagesSlice:
+		return r.Users
+	case *tg.MessagesChannelMessages:
+		return r.Users
+	}
+	return nil
+}
+
+func extractMessageChats(result tg.MessagesMessagesClass) []tg.ChatClass {
+	switch r := result.(type) {
+	case *tg.MessagesMessages:
+		return r.Chats
+	case *tg.MessagesMessagesSlice:
+		return r.Chats
+	case *tg.MessagesChannelMessages:
+		return r.Chats
+	}
+	return nil
+}
+
 func (c *Client) fetchMessages(
 	ctx context.Context,
 	progress ProgressFunc,
@@ -728,11 +911,16 @@ func (c *Client) fetchMessages(
 	useOffsetDate bool,
 	fetch func(offsetID, offsetDate, limit int) (tg.MessagesMessagesClass, error),
 	filter func(msg *tg.Message) (process bool, stop bool),
-) ([]Message, error) {
+	opts MessageFetchOptions,
+) (MessageFetchResult, error) {
 	var allMessages []Message
+	var allUsers []User
+	var allChats []Chat
+	seenUsers := make(map[int64]struct{})
 	offsetID := 0
 	batchSize := 100
 	page := 0
+	truncated := false
 
 	for {
 		offsetDate := 0
@@ -746,18 +934,21 @@ func (c *Client) fetchMessages(
 
 		if page > 0 && c.historyPacer != nil {
 			if err := c.historyPacer.Wait(ctx, progress); err != nil {
-				return nil, fmt.Errorf("history request pause: %w", err)
+				return MessageFetchResult{}, fmt.Errorf("history request pause: %w", err)
 			}
 		}
 
 		result, err := fetch(offsetID, offsetDate, batchSize)
 		if err != nil {
-			return nil, err
+			return MessageFetchResult{}, err
 		}
 		if c.historyPacer != nil {
 			c.historyPacer.RecordSuccess()
 		}
 		page++
+		allUsers = appendUsers(allUsers, seenUsers, extractMessageUsers(result))
+		c.processPeerEntities(extractMessageChats(result), extractMessageUsers(result))
+		allChats = append(allChats, c.chatsFromEntities(extractMessageChats(result), extractMessageUsers(result))...)
 
 		msgs := extractMessages(result)
 		if len(msgs) == 0 {
@@ -765,13 +956,32 @@ func (c *Client) fetchMessages(
 		}
 
 		batchMessages, lastID, stop := processMessageBatch(msgs, filter)
-		allMessages = append(allMessages, batchMessages...)
-		reportProgress(progress, ProgressUpdate{
-			Phase:   phase,
-			Parsed:  len(batchMessages),
-			Scanned: len(msgs),
-			Batch:   1,
-		})
+		if opts.MessageLimit > 0 && len(allMessages)+len(batchMessages) >= opts.MessageLimit {
+			remaining := opts.MessageLimit - len(allMessages)
+			if remaining < len(batchMessages) {
+				batchMessages = batchMessages[:remaining]
+				truncated = true
+			}
+			allMessages = append(allMessages, batchMessages...)
+			reportProgress(progress, ProgressUpdate{
+				Phase:   phase,
+				Parsed:  len(batchMessages),
+				Scanned: len(msgs),
+				Batch:   1,
+			})
+			if len(allMessages) >= opts.MessageLimit {
+				truncated = true
+				break
+			}
+		} else {
+			allMessages = append(allMessages, batchMessages...)
+			reportProgress(progress, ProgressUpdate{
+				Phase:   phase,
+				Parsed:  len(batchMessages),
+				Scanned: len(msgs),
+				Batch:   1,
+			})
+		}
 
 		if stop {
 			break
@@ -786,7 +996,7 @@ func (c *Client) fetchMessages(
 		}
 	}
 
-	return allMessages, nil
+	return MessageFetchResult{Messages: allMessages, Users: allUsers, Chats: dedupeChats(allChats), Truncated: truncated}, nil
 }
 
 func processMessageBatch(msgs []tg.MessageClass,
@@ -814,11 +1024,17 @@ func processMessageBatch(msgs []tg.MessageClass,
 		}
 
 		senderID := resolveSenderID(msg.FromID)
+		editDate := time.Time{}
+		if msg.EditDate != 0 {
+			editDate = time.Unix(int64(msg.EditDate), 0)
+		}
 		results = append(results, Message{
 			ID:       msg.ID,
 			Date:     time.Unix(int64(msg.Date), 0),
 			Text:     msg.Message,
 			SenderID: senderID,
+			Outgoing: msg.Out,
+			EditDate: editDate,
 		})
 	}
 	return results, lastID, stopLoop

@@ -10,8 +10,8 @@ import (
 )
 
 type fetchResult struct {
-	messages []telegram.Message
-	err      error
+	result telegram.MessageFetchResult
+	err    error
 }
 
 type FetchOpts struct {
@@ -25,7 +25,7 @@ type fetchHandle struct {
 	cancel   context.CancelFunc
 }
 
-func (a *App) startFetchWithProgress(opts FetchOpts, fetch func(context.Context, telegram.ProgressFunc) ([]telegram.Message, error)) fetchHandle {
+func (a *App) startFetchWithProgress(opts FetchOpts, fetch func(context.Context, telegram.ProgressFunc) (telegram.MessageFetchResult, error)) fetchHandle {
 	msgCh := make(chan tea.Msg, 128)
 	resultCh := make(chan fetchResult, 1)
 	fetchCtx, cancel := context.WithCancel(opts.Ctx)
@@ -46,8 +46,8 @@ func (a *App) startFetchWithProgress(opts FetchOpts, fetch func(context.Context,
 			}
 		}
 
-		messages, err := fetch(fetchCtx, progressFn)
-		resultCh <- fetchResult{messages: messages, err: err}
+		result, err := fetch(fetchCtx, progressFn)
+		resultCh <- fetchResult{result: result, err: err}
 		close(msgCh)
 	}()
 

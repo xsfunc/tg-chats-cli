@@ -399,12 +399,13 @@ func TestFetchMessages_PaginatesAndReportsProgress(t *testing.T) {
 		false,
 		fetch,
 		filter,
+		MessageFetchOptions{},
 	)
 	if err != nil {
 		t.Fatalf("fetchMessages error: %v", err)
 	}
-	if len(got) != 102 {
-		t.Fatalf("expected 102 messages, got %d", len(got))
+	if len(got.Messages) != 102 {
+		t.Fatalf("expected 102 messages, got %d", len(got.Messages))
 	}
 	if callCount != 2 {
 		t.Fatalf("expected 2 fetch calls, got %d", callCount)
@@ -473,6 +474,7 @@ func TestFetchMessages_PacesBetweenHistoryPages(t *testing.T) {
 		false,
 		fetch,
 		func(*tg.Message) (bool, bool) { return true, false },
+		MessageFetchOptions{},
 	)
 	if err != nil {
 		t.Fatalf("fetchMessages error: %v", err)
@@ -518,6 +520,7 @@ func TestFetchMessages_UsesOffsetDateOnFirstPage(t *testing.T) {
 		true,
 		fetch,
 		filter,
+		MessageFetchOptions{},
 	)
 	if err != nil {
 		t.Fatalf("fetchMessages error: %v", err)
@@ -527,6 +530,52 @@ func TestFetchMessages_UsesOffsetDateOnFirstPage(t *testing.T) {
 	}
 	if seenOffsetDates[0] != int(until.Unix()) {
 		t.Fatalf("unexpected offsetDate: got %d want %d", seenOffsetDates[0], int(until.Unix()))
+	}
+}
+
+func TestFetchMessages_RespectsMessageLimitAndCollectsUsers(t *testing.T) {
+	client := &Client{
+		peerCache:    make(map[int64]tg.InputPeerClass),
+		channelCache: make(map[int64]*tg.Channel),
+	}
+
+	fetch := func(offsetID, offsetDate, limit int) (tg.MessagesMessagesClass, error) {
+		return &tg.MessagesMessages{
+			Messages: []tg.MessageClass{
+				&tg.Message{ID: 3, Date: 300, Message: "c", FromID: &tg.PeerUser{UserID: 7}},
+				&tg.Message{ID: 2, Date: 200, Message: "b", FromID: &tg.PeerUser{UserID: 7}},
+				&tg.Message{ID: 1, Date: 100, Message: "a", FromID: &tg.PeerUser{UserID: 8}},
+			},
+			Users: []tg.UserClass{
+				&tg.User{ID: 7, FirstName: "Ada", Username: "ada", AccessHash: 77},
+			},
+		}, nil
+	}
+
+	got, err := client.fetchMessages(
+		context.Background(),
+		nil,
+		"phase",
+		time.Time{},
+		false,
+		fetch,
+		func(*tg.Message) (bool, bool) { return true, false },
+		MessageFetchOptions{MessageLimit: 2},
+	)
+	if err != nil {
+		t.Fatalf("fetchMessages error: %v", err)
+	}
+	if len(got.Messages) != 2 {
+		t.Fatalf("expected 2 messages, got %d", len(got.Messages))
+	}
+	if !got.Truncated {
+		t.Fatal("expected truncated result")
+	}
+	if len(got.Users) != 1 || got.Users[0].ID != 7 || got.Users[0].Username != "ada" {
+		t.Fatalf("unexpected users: %+v", got.Users)
+	}
+	if _, ok := client.peerCache[7]; !ok {
+		t.Fatal("expected user peer cache entry")
 	}
 }
 
