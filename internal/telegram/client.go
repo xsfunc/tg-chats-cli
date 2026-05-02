@@ -6,6 +6,7 @@ import (
 	"io"
 	"log/slog"
 	"os"
+	"path/filepath"
 	"sort"
 	"time"
 
@@ -67,6 +68,15 @@ type User struct {
 	FirstName string
 	LastName  string
 	IsBot     bool
+}
+
+type Account struct {
+	TelegramUserID int64
+	Username       string
+	FirstName      string
+	LastName       string
+	Phone          string
+	IsBot          bool
 }
 
 type DialogsResult struct {
@@ -134,15 +144,18 @@ func (c *Client) Login(ctx context.Context, input io.Reader) error {
 	}))
 	slog.SetDefault(logger)
 
-	// Ensure session directory exists
-	if err := os.MkdirAll("session", 0755); err != nil {
+	sessionPath := c.cfg.SessionPath
+	if sessionPath == "" {
+		sessionPath = "session/session.db"
+	}
+	if err := os.MkdirAll(filepath.Dir(sessionPath), 0755); err != nil {
 		return fmt.Errorf("failed to create session directory: %w", err)
 	}
 
 	clientCtx, cancelClient := context.WithCancel(ctx)
 	opts := &gotgproto.ClientOpts{
 		Context:         clientCtx,
-		Session:         sessionMaker.SqlSession(sqlite.Open("session/session.db")),
+		Session:         sessionMaker.SqlSession(sqlite.Open(sessionPath)),
 		AuthConversator: gotgproto.BasicConversator(),
 		Middlewares: []telegram.Middleware{
 			newFloodWaitMiddleware(time.Duration(c.cfg.FloodWaitMaxSeconds)*time.Second, c.recordFloodWait),
@@ -169,6 +182,21 @@ func (c *Client) Login(ctx context.Context, input io.Reader) error {
 	c.ctx = client.CreateContext()
 
 	return nil
+}
+
+func (c *Client) Account() (Account, error) {
+	if c.proto == nil || c.proto.Self == nil {
+		return Account{}, fmt.Errorf("telegram client is not logged in")
+	}
+	self := c.proto.Self
+	return Account{
+		TelegramUserID: self.ID,
+		Username:       self.Username,
+		FirstName:      self.FirstName,
+		LastName:       self.LastName,
+		Phone:          self.Phone,
+		IsBot:          self.Bot,
+	}, nil
 }
 
 type startClientResult struct {

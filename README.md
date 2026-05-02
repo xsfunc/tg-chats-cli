@@ -17,11 +17,13 @@ High-level flow:
 - `internal/tui` contains Bubble Tea models for chat and topic selection.
 - `internal/config` loads config from env and `.env`.
 - Cached messages go to `data/tg-summary.db` by default and sessions to `session/session.db`.
+- Saved rows are scoped by the logged-in Telegram account so multiple accounts can share one message database.
 
 Key behaviors to preserve:
 - Unread history mode saves unread messages to SQLite and marks them as read after a successful DB write.
 - Sync mode saves only unread messages from selected chats/topics.
 - Date range mode saves a specific range and does not mark as read.
+- Storage rows are keyed by `account_id`; each Telegram session should use its own session file.
 - `--id` skips TUI and works with `--since` and `--until`.
 - Forum chats require `--topic-id` or `--topic` in non-interactive mode.
 
@@ -121,6 +123,9 @@ The default command is `history`. It opens the TUI, lets you choose a chat or fo
 
 # Use a custom SQLite database path
 ./bin/tg-summary sync --db /tmp/tg-summary.db
+
+# Use a separate Telegram session while sharing the same message database
+./bin/tg-summary sync --session session/account-a.db --db data/tg-summary.db
 ```
 
 ## Install From GitHub Releases With mise
@@ -211,6 +216,7 @@ Required:
 
 Optional:
 - `TG_PHONE` phone number for login.
+- `TG_SESSION_PATH` Telegram session SQLite path (default `session/session.db`).
 - `LOG_LEVEL` `debug|info|warn|error` (default `info`).
 - `RATE_LIMIT_MS` positive request interval in milliseconds (default `350`; non-positive values use the default).
 - `TG_CONNECT_TIMEOUT_SECONDS` maximum time to wait for Telegram client startup before aborting (default `60`, set `0` to disable).
@@ -218,7 +224,10 @@ Optional:
 - `HISTORY_DELAY_MAX_MS` maximum pause between Telegram history pages (default `4000`).
 - `FLOOD_WAIT_MAX_SECONDS` maximum Telegram flood-wait delay to handle automatically (default `900`).
 
-The Telegram session file is stored at `session/session.db`. The message cache defaults to `data/tg-summary.db` and can be changed with `--db`.
+The Telegram session file is stored at `session/session.db` by default and can be changed with `TG_SESSION_PATH` or `--session`.
+The message cache defaults to `data/tg-summary.db` and can be changed with `--db`.
+One message database can contain multiple Telegram accounts because chats, topics, messages, users, and run metadata are scoped by `account_id`.
+Use a separate session path per Telegram account; reusing one session path means reusing that Telegram login.
 
 ## Troubleshooting
 
@@ -236,6 +245,7 @@ These settings reduce risk but do not guarantee that Telegram will not limit or 
 
 - Commands: `history` and `sync`; no command means `history`.
 - `--db <path>` SQLite database path (default `data/tg-summary.db`).
+- `--session <path>` Telegram session SQLite path (default `session/session.db` or `TG_SESSION_PATH`).
 - `--since YYYY-MM-DD` start date for history mode (enables date range mode).
 - `--until YYYY-MM-DD` end date for history mode (requires `--since`; defaults to now when omitted).
 - `--id <int64>` chat ID (raw or `-100...`) to run without TUI.
@@ -251,9 +261,11 @@ These settings reduce risk but do not guarantee that Telegram will not limit or 
 The database is migrated automatically with `PRAGMA user_version`.
 
 - `users`: Telegram users seen in dialog/history responses.
-- `chats`: dialogs and chat metadata, including unread counters and read cursors.
-- `topics`: forum topics keyed by `(chat_id, topic_id)`.
-- `messages`: text messages keyed by `(chat_id, topic_id, message_id)`.
+- `accounts`: logged-in Telegram accounts; existing v1 SQLite rows are migrated to a legacy account and adopted by the next logged-in account.
+- `users`: Telegram users seen in dialog/history responses, keyed by `(account_id, id)`.
+- `chats`: dialogs and chat metadata, including unread counters and read cursors, keyed by `(account_id, id)`.
+- `topics`: forum topics keyed by `(account_id, chat_id, topic_id)`.
+- `messages`: text messages keyed by `(account_id, chat_id, topic_id, message_id)`.
 - `sync_runs` and `sync_run_items`: history/sync run status, saved counts, mark-read status, warnings, and errors.
 
 ## Project Structure

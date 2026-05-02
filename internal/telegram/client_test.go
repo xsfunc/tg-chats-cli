@@ -14,6 +14,7 @@ func TestNewClient(t *testing.T) {
 	cfg := &config.Config{
 		TelegramAppID:   12345,
 		TelegramAppHash: "testhash",
+		SessionPath:     "session/session.db",
 	}
 
 	client, err := NewClient(cfg)
@@ -28,6 +29,15 @@ func TestNewClient(t *testing.T) {
 	}
 	if client.channelCache == nil {
 		t.Error("channelCache not initialized")
+	}
+}
+
+func TestAccountRequiresLogin(t *testing.T) {
+	client := &Client{}
+
+	_, err := client.Account()
+	if err == nil {
+		t.Fatal("expected error")
 	}
 }
 

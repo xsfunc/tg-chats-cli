@@ -79,6 +79,7 @@ func TestParseRunOptions_Sync(t *testing.T) {
 		"--chat-limit", "5",
 		"--message-limit", "10",
 		"--db", "tmp/tg.db",
+		"--session", "session/account-a.db",
 	}, fixedNow)
 	if err != nil {
 		t.Fatalf("parseRunOptions error: %v", err)
@@ -92,8 +93,8 @@ func TestParseRunOptions_Sync(t *testing.T) {
 	if opts.ChatID != 1234567890 || opts.ChatIDRaw != -1001234567890 {
 		t.Fatalf("unexpected chat ids: raw=%d normalized=%d", opts.ChatIDRaw, opts.ChatID)
 	}
-	if opts.ChatLimit != 5 || opts.MessageLimit != 10 || opts.DBPath != "tmp/tg.db" {
-		t.Fatalf("unexpected limits/db: %+v", opts)
+	if opts.ChatLimit != 5 || opts.MessageLimit != 10 || opts.DBPath != "tmp/tg.db" || opts.SessionPath != "session/account-a.db" {
+		t.Fatalf("unexpected limits/db/session: %+v", opts)
 	}
 }
 

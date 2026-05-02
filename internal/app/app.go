@@ -41,6 +41,7 @@ type RunOptions struct {
 	ExportFormat   string
 	Command        string
 	DBPath         string
+	SessionPath    string
 	ChatLimit      int
 	MessageLimit   int
 	ChatID         int64
@@ -57,6 +58,9 @@ func (a *App) Run(ctx context.Context, opts RunOptions) error {
 	if opts.DBPath == "" {
 		opts.DBPath = store.DefaultPath
 	}
+	if opts.SessionPath != "" {
+		a.cfg.SessionPath = opts.SessionPath
+	}
 	if opts.ExportFormat != "" {
 		return fmt.Errorf("--format is not supported in DB modes")
 	}
@@ -69,6 +73,10 @@ func (a *App) Run(ctx context.Context, opts RunOptions) error {
 	if err := a.tgClient.Login(ctx, os.Stdin); err != nil {
 		return fmt.Errorf("failed to login: %w", err)
 	}
+	account, err := a.tgClient.Account()
+	if err != nil {
+		return fmt.Errorf("read telegram account: %w", err)
+	}
 	fmt.Fprintln(os.Stderr, "Connected. Loading chats...")
 
 	db, err := store.Open(ctx, opts.DBPath)
@@ -79,6 +87,9 @@ func (a *App) Run(ctx context.Context, opts RunOptions) error {
 		_ = db.Close()
 	}()
 	a.store = db
+	if err := a.store.SetAccount(ctx, account); err != nil {
+		return fmt.Errorf("set storage account: %w", err)
+	}
 
 	if opts.Command == "sync" {
 		return a.runSync(ctx, opts)

@@ -57,6 +57,7 @@ func parseRunOptions(args []string, now func() time.Time) (app.RunOptions, error
 	var topicID int
 	var topicTitle string
 	var dbPath string
+	var sessionPath string
 	var chatLimit int
 	var messageLimit int
 	command := "history"
@@ -79,6 +80,7 @@ func parseRunOptions(args []string, now func() time.Time) (app.RunOptions, error
 	fs.IntVar(&topicID, "topic-id", 0, "Forum topic ID (required for forum chats in non-interactive mode)")
 	fs.StringVar(&topicTitle, "topic", "", "Forum topic title (alternative to --topic-id)")
 	fs.StringVar(&dbPath, "db", "", "SQLite database path")
+	fs.StringVar(&sessionPath, "session", "", "Telegram session SQLite path")
 	fs.IntVar(&chatLimit, "chat-limit", 0, "Maximum unread chats to sync (0 means unlimited)")
 	fs.IntVar(&messageLimit, "message-limit", 0, "Maximum messages per chat/topic (0 means unlimited)")
 	if err := fs.Parse(args); err != nil {
@@ -109,6 +111,7 @@ func parseRunOptions(args []string, now func() time.Time) (app.RunOptions, error
 	opts.Command = command
 	opts.ExportFormat = formatName
 	opts.DBPath = dbPath
+	opts.SessionPath = sessionPath
 	opts.ChatLimit = chatLimit
 	opts.MessageLimit = messageLimit
 	if command == "sync" {

@@ -14,6 +14,7 @@ type Config struct {
 	TelegramAppID                 int
 	TelegramAppHash               string
 	Phone                         string
+	SessionPath                   string
 	LogLevel                      string
 	RateLimitMs                   int
 	TelegramConnectTimeoutSeconds int
@@ -44,6 +45,10 @@ func Load() (*Config, error) {
 	logLevel := os.Getenv("LOG_LEVEL")
 	if logLevel == "" {
 		logLevel = "info"
+	}
+	sessionPath := os.Getenv("TG_SESSION_PATH")
+	if sessionPath == "" {
+		sessionPath = "session/session.db"
 	}
 
 	rateLimitStr := os.Getenv("RATE_LIMIT_MS")
@@ -83,6 +88,7 @@ func Load() (*Config, error) {
 		TelegramAppID:                 appID,
 		TelegramAppHash:               appHash,
 		Phone:                         os.Getenv("TG_PHONE"),
+		SessionPath:                   sessionPath,
 		LogLevel:                      logLevel,
 		RateLimitMs:                   rateLimit,
 		TelegramConnectTimeoutSeconds: connectTimeout,
