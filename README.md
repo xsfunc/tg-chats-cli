@@ -13,7 +13,7 @@ High-level flow:
 - `cmd/tg-summary` parses flags and launches the app.
 - `internal/app` orchestrates login, TUI flow, DB history, unread sync, and mark-as-read.
 - `internal/telegram` wraps the Telegram client and data fetch.
-- `internal/store` owns SQLite schema, migrations, and upserts.
+- `internal/store` owns the storage interface plus SQLite schema, migrations, and upserts.
 - `internal/tui` contains Bubble Tea models for chat and topic selection.
 - `internal/config` loads config from env and `.env`.
 - Cached messages go to `data/tg-summary.db` by default and sessions to `session/session.db`.
@@ -262,7 +262,7 @@ The database is migrated automatically with `PRAGMA user_version`.
 cmd/tg-summary/     - CLI entry point and flag parsing
 internal/app/       - Orchestrates login, TUI flow, history, sync, mark-as-read
 internal/config/    - Env config loader (.env supported)
-internal/store/     - SQLite schema, migrations, and persistence
+internal/store/     - Storage interface plus SQLite schema, migrations, and persistence
 internal/telegram/  - Telegram client wrapper (gotd + gotgproto)
 internal/tui/       - Bubble Tea TUI models for chat/topic selection
 ```

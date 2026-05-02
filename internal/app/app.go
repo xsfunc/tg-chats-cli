@@ -16,7 +16,7 @@ type App struct {
 	cfg      *config.Config
 	tgClient *telegram.Client
 	exporter Exporter
-	store    *store.Store
+	store    store.Store
 }
 
 func New(cfg *config.Config, tgClient *telegram.Client) *App {

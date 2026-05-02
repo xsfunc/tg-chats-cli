@@ -15,10 +15,6 @@ import (
 
 const schemaVersion = 1
 
-type Store struct {
-	db *sql.DB
-}
-
 type SyncRun struct {
 	ID        int64
 	Mode      string
@@ -35,7 +31,28 @@ type RunItem struct {
 	Error          string
 }
 
-func Open(ctx context.Context, path string) (*Store, error) {
+type Store interface {
+	Close() error
+	SaveUsers(ctx context.Context, users []telegram.User) error
+	SaveChats(ctx context.Context, chats []telegram.Chat) error
+	SaveTopics(ctx context.Context, chatID int64, topics []telegram.Topic) error
+	SaveMessages(ctx context.Context, chatID int64, topicID int, messages []telegram.Message) (int, error)
+	StartRun(ctx context.Context, mode string) (SyncRun, error)
+	FinishRun(ctx context.Context, runID int64, status string, runErr error) error
+	AddRunItem(ctx context.Context, item RunItem) error
+}
+
+type SQLiteStore struct {
+	db *sql.DB
+}
+
+var _ Store = (*SQLiteStore)(nil)
+
+func Open(ctx context.Context, path string) (*SQLiteStore, error) {
+	return OpenSQLite(ctx, path)
+}
+
+func OpenSQLite(ctx context.Context, path string) (*SQLiteStore, error) {
 	if path == "" {
 		path = DefaultPath
 	}
@@ -47,7 +64,7 @@ func Open(ctx context.Context, path string) (*Store, error) {
 		return nil, fmt.Errorf("open sqlite database: %w", err)
 	}
 	db.SetMaxOpenConns(1)
-	s := &Store{db: db}
+	s := &SQLiteStore{db: db}
 	if err := s.Migrate(ctx); err != nil {
 		_ = db.Close()
 		return nil, err
@@ -57,11 +74,11 @@ func Open(ctx context.Context, path string) (*Store, error) {
 
 const DefaultPath = "data/tg-summary.db"
 
-func (s *Store) Close() error {
+func (s *SQLiteStore) Close() error {
 	return s.db.Close()
 }
 
-func (s *Store) Migrate(ctx context.Context) error {
+func (s *SQLiteStore) Migrate(ctx context.Context) error {
 	if _, err := s.db.ExecContext(ctx, `PRAGMA foreign_keys = ON`); err != nil {
 		return fmt.Errorf("enable foreign keys: %w", err)
 	}
@@ -138,7 +155,7 @@ func (s *Store) Migrate(ctx context.Context) error {
 	return nil
 }
 
-func (s *Store) SaveUsers(ctx context.Context, users []telegram.User) error {
+func (s *SQLiteStore) SaveUsers(ctx context.Context, users []telegram.User) error {
 	if len(users) == 0 {
 		return nil
 	}
@@ -176,7 +193,7 @@ func (s *Store) SaveUsers(ctx context.Context, users []telegram.User) error {
 	return nil
 }
 
-func (s *Store) SaveChats(ctx context.Context, chats []telegram.Chat) error {
+func (s *SQLiteStore) SaveChats(ctx context.Context, chats []telegram.Chat) error {
 	if len(chats) == 0 {
 		return nil
 	}
@@ -232,7 +249,7 @@ func (s *Store) SaveChats(ctx context.Context, chats []telegram.Chat) error {
 	return nil
 }
 
-func (s *Store) SaveTopics(ctx context.Context, chatID int64, topics []telegram.Topic) error {
+func (s *SQLiteStore) SaveTopics(ctx context.Context, chatID int64, topics []telegram.Topic) error {
 	if len(topics) == 0 {
 		return nil
 	}
@@ -271,7 +288,7 @@ func (s *Store) SaveTopics(ctx context.Context, chatID int64, topics []telegram.
 	return nil
 }
 
-func (s *Store) SaveMessages(ctx context.Context, chatID int64, topicID int, messages []telegram.Message) (int, error) {
+func (s *SQLiteStore) SaveMessages(ctx context.Context, chatID int64, topicID int, messages []telegram.Message) (int, error) {
 	if len(messages) == 0 {
 		return 0, nil
 	}
@@ -325,7 +342,7 @@ func (s *Store) SaveMessages(ctx context.Context, chatID int64, topicID int, mes
 	return len(messages), nil
 }
 
-func (s *Store) StartRun(ctx context.Context, mode string) (SyncRun, error) {
+func (s *SQLiteStore) StartRun(ctx context.Context, mode string) (SyncRun, error) {
 	started := time.Now().UTC()
 	res, err := s.db.ExecContext(ctx, `INSERT INTO sync_runs (mode, started_at, status) VALUES (?, ?, ?)`, mode, started.Format(time.RFC3339Nano), "running")
 	if err != nil {
@@ -338,7 +355,7 @@ func (s *Store) StartRun(ctx context.Context, mode string) (SyncRun, error) {
 	return SyncRun{ID: id, Mode: mode, StartedAt: started}, nil
 }
 
-func (s *Store) FinishRun(ctx context.Context, runID int64, status string, runErr error) error {
+func (s *SQLiteStore) FinishRun(ctx context.Context, runID int64, status string, runErr error) error {
 	errText := ""
 	if runErr != nil {
 		errText = runErr.Error()
@@ -350,7 +367,7 @@ func (s *Store) FinishRun(ctx context.Context, runID int64, status string, runEr
 	return nil
 }
 
-func (s *Store) AddRunItem(ctx context.Context, item RunItem) error {
+func (s *SQLiteStore) AddRunItem(ctx context.Context, item RunItem) error {
 	if _, err := s.db.ExecContext(ctx, `INSERT INTO sync_run_items
 		(run_id, chat_id, topic_id, saved_messages, mark_read_status, warning, error)
 		VALUES (?, ?, ?, ?, ?, ?, ?)`,
