@@ -15,7 +15,7 @@ High-level flow:
 - `internal/telegram` wraps the Telegram client and data fetch.
 - `internal/store` owns the storage interface plus SQLite schema, migrations, and upserts.
 - `internal/tui` contains Bubble Tea models for chat and topic selection.
-- `internal/config` loads config from env and `.env`.
+- `internal/config` loads config from process environment variables.
 - Cached messages go to `data/tg-summary.db` by default and sessions to `session/session.db`.
 - Saved rows are scoped by the logged-in Telegram account so multiple accounts can share one message database.
 
@@ -66,12 +66,9 @@ Definition of Done (for tasks):
 ## Quick Start
 
 ```bash
-cp .env.example .env
-sed -i 's/TG_APP_ID=.*/TG_APP_ID=123456/' .env
-sed -i 's/TG_APP_HASH=.*/TG_APP_HASH=your_api_hash/' .env
-sed -i 's/TG_PHONE=.*/TG_PHONE=+1234567890/' .env
-mise run build
-./bin/tg-summary
+cp mise.local.toml.example mise.local.toml
+$EDITOR mise.local.toml
+mise run run
 ```
 
 ## Setup
@@ -89,16 +86,17 @@ mise run build
    export TG_PHONE=+1234567890  # optional
    ```
 
-   Tip: You can copy `.env.example` to `.env` and fill in your details:
+   Or use a local mise config file:
    ```bash
-   cp .env.example .env
+   cp mise.local.toml.example mise.local.toml
+   $EDITOR mise.local.toml
    ```
 
 ## Usage
 
 ```bash
 mise run build
-./bin/tg-summary
+mise run exec
 ```
 
 Or run directly:
@@ -210,6 +208,9 @@ To find chat IDs, use a Bot API-based tool or client that exposes chat IDs; chan
 
 ## Configuration
 
+The CLI is configured via process environment variables. It does not load `.env` files directly.
+Use your shell, mise, direnv, Docker, CI secrets, systemd, or another environment manager to provide the variables.
+
 Required:
 - `TG_APP_ID` integer app ID from Telegram.
 - `TG_APP_HASH` app hash from Telegram.
@@ -223,6 +224,25 @@ Optional:
 - `HISTORY_DELAY_MIN_MS` minimum pause between Telegram history pages (default `2000`).
 - `HISTORY_DELAY_MAX_MS` maximum pause between Telegram history pages (default `4000`).
 - `FLOOD_WAIT_MAX_SECONDS` maximum Telegram flood-wait delay to handle automatically (default `900`).
+
+Example with shell:
+```bash
+export TG_APP_ID=your_app_id
+export TG_APP_HASH=your_api_hash
+export TG_PHONE=+1234567890
+tg-summary
+```
+
+Example with local mise config:
+```toml
+# mise.local.toml
+[env]
+TG_APP_ID = "your_app_id"
+TG_APP_HASH = "your_api_hash"
+TG_PHONE = "+1234567890"
+```
+
+`mise.local.toml` is ignored by git and is suitable for local secrets. The committed `mise.toml` is for shared tools, non-secret environment settings, and tasks.
 
 The Telegram session file is stored at `session/session.db` by default and can be changed with `TG_SESSION_PATH` or `--session`.
 The message cache defaults to `data/tg-summary.db` and can be changed with `--db`.
@@ -273,7 +293,7 @@ The database is migrated automatically with `PRAGMA user_version`.
 ```
 cmd/tg-summary/     - CLI entry point and flag parsing
 internal/app/       - Orchestrates login, TUI flow, history, sync, mark-as-read
-internal/config/    - Env config loader (.env supported)
+internal/config/    - Env config loader
 internal/store/     - Storage interface plus SQLite schema, migrations, and persistence
 internal/telegram/  - Telegram client wrapper (gotd + gotgproto)
 internal/tui/       - Bubble Tea TUI models for chat/topic selection

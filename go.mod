@@ -11,7 +11,6 @@ require (
 	github.com/glebarez/sqlite v1.11.0
 	github.com/gotd/contrib v0.21.1
 	github.com/gotd/td v0.143.0
-	github.com/joho/godotenv v1.5.1
 	golang.org/x/time v0.15.0
 )
 

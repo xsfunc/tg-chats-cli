@@ -61,6 +61,24 @@ func TestLoad_MissingAppHash(t *testing.T) {
 	}
 }
 
+func TestLoad_DoesNotReadDotenvFile(t *testing.T) {
+	t.Chdir(t.TempDir())
+	unsetEnv(t, "TG_APP_ID")
+	unsetEnv(t, "TG_APP_HASH")
+
+	if err := os.WriteFile(".env", []byte("TG_APP_ID=12345\nTG_APP_HASH=testhash\n"), 0600); err != nil {
+		t.Fatalf("write .env: %v", err)
+	}
+
+	_, err := Load()
+	if err == nil {
+		t.Fatal("expected error when required env vars only exist in .env")
+	}
+	if err.Error() != "TG_APP_ID environment variable is required" {
+		t.Errorf("unexpected error: %v", err)
+	}
+}
+
 func TestLoad_Success(t *testing.T) {
 	setEnv(t, "TG_APP_ID", "12345")
 	setEnv(t, "TG_APP_HASH", "testhash")
