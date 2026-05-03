@@ -68,7 +68,7 @@ Definition of Done (for tasks):
 ```bash
 cp mise.local.toml.example mise.local.toml
 $EDITOR mise.local.toml
-mise run run
+mise dev
 ```
 
 ## Setup
@@ -96,12 +96,12 @@ mise run run
 
 ```bash
 mise run build
-mise run exec
+mise start
 ```
 
 Or run directly:
 ```bash
-mise run run
+mise dev
 ```
 
 The default command is `history`. It opens the TUI, lets you choose a chat or forum topic, and saves messages to `data/tg-summary.db`.
@@ -308,8 +308,8 @@ internal/tui/       - Bubble Tea TUI models for chat/topic selection
 | `mise run ci` | CI pipeline: clean build from scratch |
 | `mise run build` | Compile binary to `bin/` directory |
 | `mise run install` | Install to `$GOPATH/bin` |
-| `mise run run` | Run via `go run` (example: `mise run run -- history --since 2024-01-01`) |
-| `mise run exec` | Build and run binary |
+| `mise dev` | Run via `go run` (example: `mise dev -- history --since 2024-01-01`) |
+| `mise start` | Build and run binary |
 | `mise run clean` | Clean build artifacts |
 | `mise run tidy` | Update dependencies (`go mod tidy`) |
 | `mise run lint` | Run golangci-lint |

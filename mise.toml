@@ -40,11 +40,11 @@ run = "go build -o bin/tg-summary ./cmd/tg-summary"
 description = "Install to GOPATH/bin"
 run = "go install ./cmd/tg-summary"
 
-[tasks.run]
+[tasks.dev]
 description = "Run application via go run"
 run = "go run ./cmd/tg-summary"
 
-[tasks.exec]
+[tasks.start]
 description = "Build and run binary"
 depends = ["build"]
 run = "./bin/tg-summary"
