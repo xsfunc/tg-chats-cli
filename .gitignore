@@ -20,19 +20,16 @@ go.work
 # IDE specific files
 .idea/
 .vscode/
+.codex/
 *.swp
 *.swo
 
 # Project specific
 tmp/
 bin/
-.codex/
-.env
 mise.local.toml
 coverage.html
 
 # Application Artifacts
 session/
 exports/
-*.txt
-/tg-summary
