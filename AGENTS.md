@@ -8,16 +8,13 @@
 - Prefer the standard library; avoid new third-party dependencies unless necessary.
 - Wrap errors with context using `fmt.Errorf("context: %w", err)`.
 - Do not change public APIs without explicit request.
-- Keep package layout consistent (e.g., `cmd/`, `internal/`, `pkg/`); place new code accordingly.
+- Keep package layout consistent (`cmd/`, `internal/`, `pkg/`); place new code accordingly.
 - Be explicit about concurrency ownership: context cancellation, goroutine lifetimes, channel closure.
-
- * **Standard:** Follow "Effective Go" and Uber Style Guide.
- * **Formatting:** Always `gofmt` compatible.
- * **Errors:** Handle immediately (`if err != nil`). Wrap errors with context. No `panic`.
- * **Structure:** Minimal nesting. Use guard clauses (return early).
- * **Naming:** `camelCase`. Short local names (e.g., `r` for receiver, `i` for index). Exported names in `PascalCase`.
- * **Concision:** Use `any` instead of `interface{}`. No naked returns in long functions.
- * **Performance:** Avoid global state and `init()` functions where possible. Prefer `sync.Pool` for hot objects.
+- Handle immediately (`if err != nil`). Wrap errors with context. No `panic`.
+- Minimal nesting. Use guard clauses (return early).
+- Use `any` instead of `interface{}`. No naked returns in long functions.
+- Avoid global state and `init()` functions where possible.
+- Consider `sync.Pool` only for proven hot allocations.
 
 ## Tests
 - If you add behavior, add or update a test when it is simple and nearby.
@@ -33,7 +30,7 @@
 - Before confirming changes, check `git status -sb`, `git diff`, and `git diff --staged`.
 - For quick rollback, prefer `git restore --staged .` and `git restore .`.
 - Use Conventional Commits: `type(scope): summary` (e.g., `feat(cli): add --json output`).
-- After implementing code changes (before commit), run `mise run lint`.
+- After implementing code changes, run `mise run lint`.
 
 ## Docs
 - After completing a task and running tests/lint, update `README.md` to reflect any new functionality or structure changes.
@@ -42,8 +39,10 @@
 ## Definition of Done
 - At least one relevant test or verification step was run.
 - Documentation reflects behavior/structure changes.
-- `git status -sb` is clean and diffs are understood.
+- `git status -sb` is clean, or known unrelated local changes are called out.
 
 ## Tooling
+- Use `mise` instead of `make` for tasks.
+- Use `mise` for tool management.
 - Provide short `mise` tasks for build, test, and lint.
 - Consider pre-commit hooks for `gofmt` and a fast `go test` subset.
