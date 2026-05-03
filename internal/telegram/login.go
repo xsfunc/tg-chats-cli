@@ -68,6 +68,14 @@ func (c *Client) Login(ctx context.Context, input io.Reader) error {
 			ratelimit.New(rate.Every(time.Duration(c.cfg.RateLimitMs)*time.Millisecond), 3),
 		},
 	}
+	if c.cfg.ProxyURL != "" {
+		resolver, err := newProxyResolver(c.cfg.ProxyURL)
+		if err != nil {
+			cancelClient()
+			return fmt.Errorf("configure telegram proxy: %w", err)
+		}
+		opts.Resolver = resolver
+	}
 
 	if c.cfg.LogLevel == "debug" {
 		opts.Middlewares = append(opts.Middlewares, MiddlewareFunc(func(next tg.Invoker) gotdtelegram.InvokeFunc {

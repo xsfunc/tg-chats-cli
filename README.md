@@ -218,6 +218,7 @@ Required:
 Optional:
 - `TG_PHONE` phone number for login.
 - `TG_SESSION_PATH` Telegram session SQLite path (default `session/session.db`).
+- `TG_PROXY_URL` SOCKS proxy URL for Telegram MTProto connections, for example `socks5://172.28.224.1:1080`.
 - `LOG_LEVEL` `debug|info|warn|error` (default `info`).
 - `RATE_LIMIT_MS` positive request interval in milliseconds (default `350`; non-positive values use the default).
 - `TG_CONNECT_TIMEOUT_SECONDS` maximum time to wait for Telegram client startup before aborting (default `60`, set `0` to disable).
@@ -240,6 +241,8 @@ Example with local mise config:
 TG_APP_ID = "your_app_id"
 TG_APP_HASH = "your_api_hash"
 TG_PHONE = "+1234567890"
+# Optional, useful when Telegram is reachable only through a local Xray SOCKS inbound.
+TG_PROXY_URL = "socks5://172.28.224.1:1080"
 ```
 
 `mise.local.toml` is ignored by git and is suitable for local secrets. The committed `mise.toml` is for shared tools, non-secret environment settings, and tasks.
@@ -252,6 +255,14 @@ Use a separate session path per Telegram account; reusing one session path means
 ## Troubleshooting
 
 If startup stops after the GoTGProto banner, the client is still trying to connect or authorize with Telegram. By default the app aborts after `TG_CONNECT_TIMEOUT_SECONDS=60` with a diagnostic error. Check network or proxy access to Telegram, try `LOG_LEVEL=debug`, or increase/disable the startup timeout with `TG_CONNECT_TIMEOUT_SECONDS=0` if you expect a long authorization step.
+
+For WSL with Xray running on Windows, set `TG_PROXY_URL` to the Windows host IP and Xray SOCKS port. The Windows host IP is usually the `nameserver` value from `/etc/resolv.conf` inside WSL:
+
+```bash
+export TG_PROXY_URL=socks5://172.28.224.1:1080
+```
+
+HTTP proxies are not supported for Telegram MTProto connections; use an Xray SOCKS inbound.
 
 ## Telegram Safety Pauses
 

@@ -13,6 +13,7 @@ type Config struct {
 	TelegramAppHash               string
 	Phone                         string
 	SessionPath                   string
+	ProxyURL                      string
 	LogLevel                      string
 	RateLimitMs                   int
 	TelegramConnectTimeoutSeconds int
@@ -84,6 +85,7 @@ func Load() (*Config, error) {
 		TelegramAppHash:               appHash,
 		Phone:                         os.Getenv("TG_PHONE"),
 		SessionPath:                   sessionPath,
+		ProxyURL:                      os.Getenv("TG_PROXY_URL"),
 		LogLevel:                      logLevel,
 		RateLimitMs:                   rateLimit,
 		TelegramConnectTimeoutSeconds: connectTimeout,

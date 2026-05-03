@@ -3,6 +3,8 @@ TG_APP_ID = "123456"
 TG_APP_HASH = "your_api_hash"
 TG_PHONE = "+1234567890"
 TG_SESSION_PATH = "session/session.db"
+# Optional SOCKS proxy for Telegram MTProto, for example Xray on Windows from WSL.
+# TG_PROXY_URL = "socks5://172.28.224.1:1080"
 LOG_LEVEL = "info"
 RATE_LIMIT_MS = "350"
 TG_CONNECT_TIMEOUT_SECONDS = "60"

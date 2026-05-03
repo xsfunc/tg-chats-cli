@@ -84,6 +84,7 @@ func TestLoad_Success(t *testing.T) {
 	setEnv(t, "TG_APP_HASH", "testhash")
 	setEnv(t, "TG_PHONE", "+1234567890")
 	setEnv(t, "TG_SESSION_PATH", "session/test.db")
+	setEnv(t, "TG_PROXY_URL", "socks5://172.28.224.1:1080")
 	setEnv(t, "LOG_LEVEL", "debug")
 	setEnv(t, "RATE_LIMIT_MS", "500")
 	setEnv(t, "TG_CONNECT_TIMEOUT_SECONDS", "45")
@@ -107,6 +108,9 @@ func TestLoad_Success(t *testing.T) {
 	}
 	if cfg.SessionPath != "session/test.db" {
 		t.Errorf("expected SessionPath 'session/test.db', got %s", cfg.SessionPath)
+	}
+	if cfg.ProxyURL != "socks5://172.28.224.1:1080" {
+		t.Errorf("expected ProxyURL 'socks5://172.28.224.1:1080', got %s", cfg.ProxyURL)
 	}
 	if cfg.LogLevel != "debug" {
 		t.Errorf("expected LogLevel 'debug', got %s", cfg.LogLevel)
@@ -133,6 +137,7 @@ func TestLoad_Defaults(t *testing.T) {
 	setEnv(t, "TG_APP_HASH", "testhash")
 	unsetEnv(t, "TG_PHONE")
 	unsetEnv(t, "TG_SESSION_PATH")
+	unsetEnv(t, "TG_PROXY_URL")
 	unsetEnv(t, "LOG_LEVEL")
 	unsetEnv(t, "RATE_LIMIT_MS")
 	unsetEnv(t, "TG_CONNECT_TIMEOUT_SECONDS")
@@ -150,6 +155,9 @@ func TestLoad_Defaults(t *testing.T) {
 	}
 	if cfg.SessionPath != "session/session.db" {
 		t.Errorf("expected default SessionPath 'session/session.db', got %s", cfg.SessionPath)
+	}
+	if cfg.ProxyURL != "" {
+		t.Errorf("expected empty ProxyURL, got %s", cfg.ProxyURL)
 	}
 	if cfg.LogLevel != "info" {
 		t.Errorf("expected default LogLevel 'info', got %s", cfg.LogLevel)
