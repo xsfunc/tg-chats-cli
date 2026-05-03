@@ -29,7 +29,6 @@ bin/
 .codex/
 .env
 mise.local.toml
-.tasks/
 coverage.html
 
 # Application Artifacts
