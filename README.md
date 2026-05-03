@@ -12,8 +12,8 @@ First read: `README.md` (this file) and `AGENTS.md` for repo-specific rules.
 High-level flow:
 - `cmd/tg-summary` parses flags and launches the app.
 - `internal/app` orchestrates login, TUI flow, DB history, unread sync, and mark-as-read.
-- `internal/telegram` wraps the Telegram client and data fetch.
-- `internal/store` owns the storage interface plus SQLite schema, migrations, and upserts.
+- `internal/telegram` wraps the Telegram client, dialog/topic lookup, history fetch, and mark-as-read calls.
+- `internal/store` owns the storage interface, SQLite schema, migrations, account scoping, upserts, and run metadata.
 - `internal/tui` contains Bubble Tea models for chat and topic selection.
 - `internal/config` loads config from process environment variables.
 - Cached messages go to `data/tg-summary.db` by default and sessions to `session/session.db`.
@@ -280,7 +280,6 @@ These settings reduce risk but do not guarantee that Telegram will not limit or 
 
 The database is migrated automatically with `PRAGMA user_version`.
 
-- `users`: Telegram users seen in dialog/history responses.
 - `accounts`: logged-in Telegram accounts; existing v1 SQLite rows are migrated to a legacy account and adopted by the next logged-in account.
 - `users`: Telegram users seen in dialog/history responses, keyed by `(account_id, id)`.
 - `chats`: dialogs and chat metadata, including unread counters and read cursors, keyed by `(account_id, id)`.
@@ -294,8 +293,8 @@ The database is migrated automatically with `PRAGMA user_version`.
 cmd/tg-summary/     - CLI entry point and flag parsing
 internal/app/       - Orchestrates login, TUI flow, history, sync, mark-as-read
 internal/config/    - Env config loader
-internal/store/     - Storage interface plus SQLite schema, migrations, and persistence
-internal/telegram/  - Telegram client wrapper (gotd + gotgproto)
+internal/store/     - Storage interface, SQLite schema/migrations, accounts, saves, run metadata
+internal/telegram/  - Telegram client wrapper split by login, dialogs, history, topics, mark-as-read
 internal/tui/       - Bubble Tea TUI models for chat/topic selection
 ```
 

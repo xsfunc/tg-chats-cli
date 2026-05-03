@@ -89,9 +89,9 @@ func renderListItem(w io.Writer, str string, selected bool) {
 	_, _ = fmt.Fprint(w, str)
 }
 
-// modeItem represents an export mode option.
+// modeItem represents a history mode option.
 type modeItem struct {
-	mode  ExportMode
+	mode  HistoryMode
 	label string
 }
 

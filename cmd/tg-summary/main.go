@@ -76,7 +76,7 @@ func parseRunOptions(args []string, now func() time.Time) (app.RunOptions, error
 	fs.StringVar(&sinceStr, "since", "", "Start date (YYYY-MM-DD)")
 	fs.StringVar(&untilStr, "until", "", "End date (YYYY-MM-DD)")
 	fs.StringVar(&formatName, "format", "", "Deprecated: file export format is not supported in DB modes")
-	fs.Int64Var(&chatIDRaw, "id", 0, "Chat ID (raw or -100... format) to export without TUI")
+	fs.Int64Var(&chatIDRaw, "id", 0, "Chat ID (raw or -100... format) to save without TUI")
 	fs.IntVar(&topicID, "topic-id", 0, "Forum topic ID (required for forum chats in non-interactive mode)")
 	fs.StringVar(&topicTitle, "topic", "", "Forum topic title (alternative to --topic-id)")
 	fs.StringVar(&dbPath, "db", "", "SQLite database path")
@@ -109,7 +109,6 @@ func parseRunOptions(args []string, now func() time.Time) (app.RunOptions, error
 	var opts app.RunOptions
 	var err error
 	opts.Command = command
-	opts.ExportFormat = formatName
 	opts.DBPath = dbPath
 	opts.SessionPath = sessionPath
 	opts.ChatLimit = chatLimit

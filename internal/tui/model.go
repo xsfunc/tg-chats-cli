@@ -14,11 +14,11 @@ import (
 	"github.com/charmbracelet/lipgloss"
 )
 
-// ExportMode determines how messages are selected for export.
-type ExportMode int
+// HistoryMode determines how messages are selected for saving.
+type HistoryMode int
 
 const (
-	ModeUnread ExportMode = iota
+	ModeUnread HistoryMode = iota
 	ModeDateRange
 )
 
@@ -27,14 +27,14 @@ type viewState int
 
 const (
 	stateChatList   viewState = iota // main chat selection
-	stateModeList                    // export mode selection
+	stateModeList                    // history mode selection
 	stateSinceInput                  // date range: start date input
 	stateUntilInput                  // date range: end date input
 )
 
 // ModelOptions configures the initial state of Model.
 type ModelOptions struct {
-	Mode  ExportMode
+	Mode  HistoryMode
 	Since time.Time
 	Until time.Time
 }
@@ -50,7 +50,7 @@ type Model struct {
 	markReadFunc func(telegram.Chat) error
 	statusMsg    string
 	errorMsg     string
-	mode         ExportMode
+	mode         HistoryMode
 	state        viewState
 	sinceInput   textinput.Model
 	untilInput   textinput.Model
@@ -94,7 +94,7 @@ func NewModel(chats []telegram.Chat, markReadFunc func(telegram.Chat) error, opt
 		modeItem{mode: ModeDateRange, label: "Date range"},
 	}
 	modeList := list.New(modeItems, modeDelegate{}, defaultListWidth, 8)
-	modeList.Title = "Select Export Mode"
+	modeList.Title = "Select History Mode"
 	modeList.SetShowStatusBar(false)
 	modeList.SetFilteringEnabled(false)
 	modeList.Styles.Title = titleStyle
@@ -507,7 +507,7 @@ func (m Model) currentChat() *telegram.Chat {
 func (m Model) GetSelected() *telegram.Chat { return m.selected }
 func (m Model) Done() bool                  { return m.done }
 func (m Model) Canceled() bool              { return m.canceled }
-func (m Model) GetExportMode() ExportMode   { return m.mode }
+func (m Model) GetHistoryMode() HistoryMode { return m.mode }
 
 func (m Model) GetDateRange() (time.Time, time.Time, bool) {
 	if m.mode != ModeDateRange {
@@ -516,7 +516,7 @@ func (m Model) GetDateRange() (time.Time, time.Time, bool) {
 	return m.since, m.until, true
 }
 
-func modeLabel(mode ExportMode) string {
+func modeLabel(mode HistoryMode) string {
 	if mode == ModeDateRange {
 		return "Date range"
 	}

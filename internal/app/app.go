@@ -15,22 +15,13 @@ import (
 type App struct {
 	cfg      *config.Config
 	tgClient *telegram.Client
-	exporter Exporter
 	store    store.Store
 }
 
 func New(cfg *config.Config, tgClient *telegram.Client) *App {
-	return NewWithExporter(cfg, tgClient, NewDefaultExporter())
-}
-
-func NewWithExporter(cfg *config.Config, tgClient *telegram.Client, exporter Exporter) *App {
-	if exporter == nil {
-		exporter = NewDefaultExporter()
-	}
 	return &App{
 		cfg:      cfg,
 		tgClient: tgClient,
-		exporter: exporter,
 	}
 }
 
@@ -38,7 +29,6 @@ type RunOptions struct {
 	Since          time.Time
 	Until          time.Time
 	UseDateRange   bool
-	ExportFormat   string
 	Command        string
 	DBPath         string
 	SessionPath    string
@@ -60,9 +50,6 @@ func (a *App) Run(ctx context.Context, opts RunOptions) error {
 	}
 	if opts.SessionPath != "" {
 		a.cfg.SessionPath = opts.SessionPath
-	}
-	if opts.ExportFormat != "" {
-		return fmt.Errorf("--format is not supported in DB modes")
 	}
 	if opts.Command != "sync" && !opts.NonInteractive && !stdioIsTerminal() {
 		return fmt.Errorf("interactive mode requires a terminal; run from an interactive shell or pass --id for non-interactive history")
@@ -335,15 +322,6 @@ func (a *App) markMessagesAsRead(ctx context.Context, selectedChat telegram.Chat
 		return markReadResult{Attempted: true, Err: err}
 	}
 	return markReadResult{}
-}
-
-func sanitizeFilename(name string) string {
-	invalid := []string{"/", "\\", ":", "*", "?", "\"", "<", ">", "|"}
-	res := name
-	for _, char := range invalid {
-		res = strings.ReplaceAll(res, char, "_")
-	}
-	return strings.TrimSpace(res)
 }
 
 func formatMarkReadStatus(result markReadResult) string {

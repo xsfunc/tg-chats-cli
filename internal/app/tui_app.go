@@ -54,7 +54,7 @@ type appModel struct {
 
 	selectedChat  *telegram.Chat
 	selectedTopic *telegram.Topic
-	exportTitle   string
+	displayTitle  string
 	fetchHandle   *fetchHandle
 	err           error
 }
@@ -127,7 +127,7 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 			}
 			m.selectedChat = selected
 			m.selectedTopic = nil
-			m.applyExportMode()
+			m.applyHistoryMode()
 			if selected.IsForum {
 				m.loading = tui.NewLoadingModel(fmt.Sprintf("Fetching topics for forum %s...", selected.Title))
 				m.state = stateLoadingTopics
@@ -223,7 +223,7 @@ func (m appModel) startFetch() (tea.Model, tea.Cmd) {
 	}
 	handle := m.app.startFetchWithProgress(FetchOpts{Ctx: m.ctx, Title: plan.progressTitle}, plan.fetch)
 	m.fetchHandle = &handle
-	m.exportTitle = plan.exportTitle
+	m.displayTitle = plan.displayTitle
 	m.progress = tui.NewProgressModel(plan.progressTitle, handle.msgCh)
 	m.state = stateProgress
 	return m, tea.Batch(m.progress.Init(), waitForFetchResult(handle.resultCh))
@@ -243,7 +243,7 @@ func (m appModel) handleFetchResult(msg fetchResultMsg) (tea.Model, tea.Cmd) {
 	}
 
 	markResult := m.app.markMessagesAsRead(m.ctx, *m.selectedChat, m.selectedTopic, msg.result, m.opts)
-	m.summary = tui.NewSummaryModel(m.exportTitle, m.opts.DBPath, saved, formatMarkReadStatus(markResult))
+	m.summary = tui.NewSummaryModel(m.displayTitle, m.opts.DBPath, saved, formatMarkReadStatus(markResult))
 	m.state = stateSummary
 	return m, nil
 }
@@ -278,8 +278,8 @@ func (m appModel) newChatModel(chats []telegram.Chat) tui.Model {
 	return tui.NewModel(chats, markReadFunc, modelOpts)
 }
 
-func (m *appModel) applyExportMode() {
-	mode := m.chat.GetExportMode()
+func (m *appModel) applyHistoryMode() {
+	mode := m.chat.GetHistoryMode()
 	if mode == tui.ModeDateRange {
 		since, until, ok := m.chat.GetDateRange()
 		if ok {

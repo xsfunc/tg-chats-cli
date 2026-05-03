@@ -7,7 +7,7 @@ import (
 	tea "github.com/charmbracelet/bubbletea"
 )
 
-// SummaryModel shows the result of an export and waits for user confirmation.
+// SummaryModel shows the result of a save and waits for user confirmation.
 type SummaryModel struct {
 	title      string
 	filename   string
@@ -17,7 +17,7 @@ type SummaryModel struct {
 	done       bool
 }
 
-// NewSummaryModel creates a new export summary display.
+// NewSummaryModel creates a new save summary display.
 func NewSummaryModel(title, filename string, count int, markStatus string) SummaryModel {
 	return SummaryModel{
 		title:      title,
@@ -55,7 +55,7 @@ func (m SummaryModel) View() string {
 	var b strings.Builder
 
 	// Header with success indicator
-	b.WriteString(titleStyle.Render(modeUnreadStyle.Render("✓") + " Export complete"))
+	b.WriteString(titleStyle.Render(modeUnreadStyle.Render("✓") + " Save complete"))
 	b.WriteString("\n\n")
 
 	// Details
@@ -63,7 +63,7 @@ func (m SummaryModel) View() string {
 	b.WriteString("\n")
 	b.WriteString(infoStyle.Render(fmt.Sprintf("Messages: %d", m.count)))
 	b.WriteString("\n")
-	b.WriteString(infoStyle.Render(fmt.Sprintf("File:     %s", m.filename)))
+	b.WriteString(infoStyle.Render(fmt.Sprintf("Database: %s", m.filename)))
 
 	if m.markStatus != "" {
 		b.WriteString("\n\n")
