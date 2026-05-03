@@ -1,12 +1,14 @@
 package telegram
 
 import (
+	"bufio"
 	"context"
 	"fmt"
 	"io"
 	"log/slog"
 	"os"
 	"path/filepath"
+	"sync/atomic"
 	"time"
 
 	"cli-tg-chat-summary/internal/config"
@@ -22,17 +24,17 @@ import (
 )
 
 func NewClient(cfg *config.Config) (*Client, error) {
-	return &Client{
+	client := &Client{
 		cfg:          cfg,
 		peerCache:    make(map[int64]tg.InputPeerClass),
 		channelCache: make(map[int64]*tg.Channel),
 		historyPacer: newHistoryPacer(cfg),
-	}, nil
+	}
+	client.startProtoClient = client.newProtoClient
+	return client, nil
 }
 
 func (c *Client) Login(ctx context.Context, input io.Reader) error {
-	_ = input
-
 	var level slog.Level
 	switch c.cfg.LogLevel {
 	case "debug":
@@ -59,10 +61,12 @@ func (c *Client) Login(ctx context.Context, input io.Reader) error {
 	}
 
 	clientCtx, cancelClient := context.WithCancel(ctx)
+	authPromptActive := &atomic.Bool{}
+	authPromptWake := make(chan struct{}, 1)
 	opts := &gotgproto.ClientOpts{
 		Context:         clientCtx,
 		Session:         sessionMaker.SqlSession(sqlite.Open(sessionPath)),
-		AuthConversator: gotgproto.BasicConversator(),
+		AuthConversator: newTerminalAuthConversator(input, os.Stdout, authPromptActive, authPromptWake),
 		Middlewares: []gotdtelegram.Middleware{
 			newFloodWaitMiddleware(time.Duration(c.cfg.FloodWaitMaxSeconds)*time.Second, c.recordFloodWait),
 			ratelimit.New(rate.Every(time.Duration(c.cfg.RateLimitMs)*time.Millisecond), 3),
@@ -86,7 +90,7 @@ func (c *Client) Login(ctx context.Context, input io.Reader) error {
 		}))
 	}
 
-	client, err := c.startClient(opts, cancelClient)
+	client, err := c.startClient(opts, cancelClient, authPromptActive, authPromptWake)
 	if err != nil {
 		cancelClient()
 		return fmt.Errorf("failed to create client: %w", err)
@@ -118,15 +122,28 @@ type startClientResult struct {
 	err    error
 }
 
-func (c *Client) startClient(opts *gotgproto.ClientOpts, cancelClient context.CancelFunc) (*gotgproto.Client, error) {
+func (c *Client) newProtoClient(opts *gotgproto.ClientOpts) (*gotgproto.Client, error) {
+	return gotgproto.NewClient(
+		c.cfg.TelegramAppID,
+		c.cfg.TelegramAppHash,
+		gotgproto.ClientTypePhone(c.cfg.Phone),
+		opts,
+	)
+}
+
+func (c *Client) startClient(
+	opts *gotgproto.ClientOpts,
+	cancelClient context.CancelFunc,
+	authPromptActive *atomic.Bool,
+	authPromptWake <-chan struct{},
+) (*gotgproto.Client, error) {
 	resultCh := make(chan startClientResult, 1)
+	startProtoClient := c.startProtoClient
+	if startProtoClient == nil {
+		startProtoClient = c.newProtoClient
+	}
 	go func() {
-		client, err := gotgproto.NewClient(
-			c.cfg.TelegramAppID,
-			c.cfg.TelegramAppHash,
-			gotgproto.ClientTypePhone(c.cfg.Phone),
-			opts,
-		)
+		client, err := startProtoClient(opts)
 		resultCh <- startClientResult{client: client, err: err}
 	}()
 
@@ -141,16 +158,150 @@ func (c *Client) startClient(opts *gotgproto.ClientOpts, cancelClient context.Ca
 	timeoutTimer := time.NewTimer(timeout)
 	defer statusTimer.Stop()
 	defer timeoutTimer.Stop()
+	timeoutPaused := false
 
 	for {
 		select {
 		case result := <-resultCh:
 			return result.client, result.err
+		case <-authPromptWake:
+			timeoutPaused = setTimeoutPaused(timeoutTimer, timeout, timeoutPaused, authPromptActive.Load())
 		case <-statusTimer.C:
-			fmt.Fprintf(os.Stderr, "Still connecting to Telegram after 10s; waiting up to %s before aborting.\n", timeout)
+			if !authPromptActive.Load() {
+				fmt.Fprintf(os.Stderr, "Still connecting to Telegram after 10s; waiting up to %s before aborting.\n", timeout)
+			}
 		case <-timeoutTimer.C:
+			if authPromptActive.Load() {
+				timeoutPaused = true
+				continue
+			}
 			cancelClient()
 			return nil, fmt.Errorf("telegram connection timed out after %ds; check network/proxy access to Telegram or increase TG_CONNECT_TIMEOUT_SECONDS", timeoutSeconds)
 		}
+	}
+}
+
+func setTimeoutPaused(timer *time.Timer, timeout time.Duration, paused, promptActive bool) bool {
+	if promptActive {
+		if !paused {
+			stopTimer(timer)
+		}
+		return true
+	}
+	if paused {
+		timer.Reset(timeout)
+	}
+	return false
+}
+
+func stopTimer(timer *time.Timer) {
+	if !timer.Stop() {
+		select {
+		case <-timer.C:
+		default:
+		}
+	}
+}
+
+type terminalAuthConversator struct {
+	reader       *bufio.Reader
+	output       io.Writer
+	authStatus   gotgproto.AuthStatus
+	promptActive *atomic.Bool
+	promptWake   chan<- struct{}
+}
+
+func newTerminalAuthConversator(
+	input io.Reader,
+	output io.Writer,
+	promptActive *atomic.Bool,
+	promptWake chan<- struct{},
+) gotgproto.AuthConversator {
+	if input == nil {
+		input = os.Stdin
+	}
+	if output == nil {
+		output = os.Stdout
+	}
+	return &terminalAuthConversator{
+		reader:       bufio.NewReader(input),
+		output:       output,
+		promptActive: promptActive,
+		promptWake:   promptWake,
+	}
+}
+
+func (c *terminalAuthConversator) AskPhoneNumber() (string, error) {
+	if c.authStatus.Event == gotgproto.AuthStatusPhoneRetrial {
+		if err := c.printRetry(
+			"The phone number you just entered seems to be incorrect,",
+			c.authStatus.AttemptsLeft,
+		); err != nil {
+			return "", err
+		}
+	}
+	return c.ask("Enter Phone Number: ")
+}
+
+func (c *terminalAuthConversator) AskPassword() (string, error) {
+	if c.authStatus.Event == gotgproto.AuthStatusPasswordRetrial {
+		if err := c.printRetry(
+			"The 2FA password you just entered seems to be incorrect,",
+			c.authStatus.AttemptsLeft,
+		); err != nil {
+			return "", err
+		}
+	}
+	return c.ask("Enter 2FA password: ")
+}
+
+func (c *terminalAuthConversator) AskCode() (string, error) {
+	if c.authStatus.Event == gotgproto.AuthStatusPhoneCodeRetrial {
+		if err := c.printRetry(
+			"The OTP you just entered seems to be incorrect,",
+			c.authStatus.AttemptsLeft,
+		); err != nil {
+			return "", err
+		}
+	}
+	return c.ask("Enter Code: ")
+}
+
+func (c *terminalAuthConversator) AuthStatus(authStatus gotgproto.AuthStatus) {
+	c.authStatus = authStatus
+}
+
+func (c *terminalAuthConversator) ask(prompt string) (string, error) {
+	if _, err := fmt.Fprint(c.output, prompt); err != nil {
+		return "", fmt.Errorf("write auth prompt: %w", err)
+	}
+	c.setPromptActive(true)
+	defer c.setPromptActive(false)
+	return c.reader.ReadString('\n')
+}
+
+func (c *terminalAuthConversator) printRetry(message string, attemptsLeft int) error {
+	if _, err := fmt.Fprintln(c.output, message); err != nil {
+		return fmt.Errorf("write auth retry message: %w", err)
+	}
+	if _, err := fmt.Fprintln(c.output, "Attempts Left:", attemptsLeft); err != nil {
+		return fmt.Errorf("write auth retry attempts: %w", err)
+	}
+	if _, err := fmt.Fprintln(c.output, "Please try again...."); err != nil {
+		return fmt.Errorf("write auth retry instruction: %w", err)
+	}
+	return nil
+}
+
+func (c *terminalAuthConversator) setPromptActive(active bool) {
+	if c.promptActive != nil {
+		c.promptActive.Store(active)
+	}
+	if c.promptWake == nil {
+		return
+	}
+	select {
+	case c.promptWake <- struct{}{}:
+	default:
 	}
 }

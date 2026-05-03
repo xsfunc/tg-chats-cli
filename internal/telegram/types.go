@@ -11,12 +11,13 @@ import (
 )
 
 type Client struct {
-	cfg          *config.Config
-	proto        *gotgproto.Client
-	ctx          *ext.Context
-	peerCache    map[int64]tg.InputPeerClass
-	channelCache map[int64]*tg.Channel
-	historyPacer *historyPacer
+	cfg              *config.Config
+	proto            *gotgproto.Client
+	ctx              *ext.Context
+	peerCache        map[int64]tg.InputPeerClass
+	channelCache     map[int64]*tg.Channel
+	historyPacer     *historyPacer
+	startProtoClient func(*gotgproto.ClientOpts) (*gotgproto.Client, error)
 }
 
 type Chat struct {

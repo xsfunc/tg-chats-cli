@@ -221,7 +221,7 @@ Optional:
 - `TG_PROXY_URL` SOCKS proxy URL for Telegram MTProto connections, for example `socks5://172.28.224.1:1080`.
 - `LOG_LEVEL` `debug|info|warn|error` (default `info`).
 - `RATE_LIMIT_MS` positive request interval in milliseconds (default `350`; non-positive values use the default).
-- `TG_CONNECT_TIMEOUT_SECONDS` maximum time to wait for Telegram client startup before aborting (default `60`, set `0` to disable).
+- `TG_CONNECT_TIMEOUT_SECONDS` maximum time to wait for Telegram client startup network phases before aborting (default `60`, set `0` to disable). Time spent waiting for phone/code/2FA input is not counted.
 - `HISTORY_DELAY_MIN_MS` minimum pause between Telegram history pages (default `2000`).
 - `HISTORY_DELAY_MAX_MS` maximum pause between Telegram history pages (default `4000`).
 - `FLOOD_WAIT_MAX_SECONDS` maximum Telegram flood-wait delay to handle automatically (default `900`).
@@ -254,7 +254,7 @@ Use a separate session path per Telegram account; reusing one session path means
 
 ## Troubleshooting
 
-If startup stops after the GoTGProto banner, the client is still trying to connect or authorize with Telegram. By default the app aborts after `TG_CONNECT_TIMEOUT_SECONDS=60` with a diagnostic error. Check network or proxy access to Telegram, try `LOG_LEVEL=debug`, or increase/disable the startup timeout with `TG_CONNECT_TIMEOUT_SECONDS=0` if you expect a long authorization step.
+If startup stops after the GoTGProto banner without asking for input, the client is still trying to connect to Telegram. By default the app aborts each startup network phase after `TG_CONNECT_TIMEOUT_SECONDS=60` with a diagnostic error. Check network or proxy access to Telegram, try `LOG_LEVEL=debug`, or increase/disable the startup timeout with `TG_CONNECT_TIMEOUT_SECONDS=0` if your connection needs longer. When the app asks for phone, code, or 2FA input, that human input time is not counted against the startup timeout.
 
 For WSL with Xray running on Windows, set `TG_PROXY_URL` to the Windows host IP and Xray SOCKS port. The Windows host IP is usually the `nameserver` value from `/etc/resolv.conf` inside WSL:
 
