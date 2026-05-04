@@ -98,6 +98,79 @@ func TestParseRunOptions_Sync(t *testing.T) {
 	}
 }
 
+func TestParseRunOptions_Chats(t *testing.T) {
+	opts, err := parseRunOptions([]string{
+		"chats",
+		"--db", "tmp/tg.db",
+		"--account-id", "2",
+	}, fixedNow)
+	if err != nil {
+		t.Fatalf("parseRunOptions error: %v", err)
+	}
+	if opts.Command != "chats" {
+		t.Fatalf("command = %q, want chats", opts.Command)
+	}
+	if !opts.NonInteractive {
+		t.Fatal("expected chats to be non-interactive")
+	}
+	if opts.DBPath != "tmp/tg.db" || opts.AccountID != 2 {
+		t.Fatalf("unexpected db/account: %+v", opts)
+	}
+}
+
+func TestParseRunOptions_Export(t *testing.T) {
+	opts, err := parseRunOptions([]string{
+		"export",
+		"--id", "-1001234567890",
+		"--topic-id", "42",
+		"--since", "2024-01-01",
+		"--until", "2024-01-31",
+		"--db", "tmp/tg.db",
+		"--account-id", "2",
+	}, fixedNow)
+	if err != nil {
+		t.Fatalf("parseRunOptions error: %v", err)
+	}
+	if opts.Command != "export" {
+		t.Fatalf("command = %q, want export", opts.Command)
+	}
+	if opts.ChatID != 1234567890 || opts.ChatIDRaw != -1001234567890 {
+		t.Fatalf("unexpected chat ids: raw=%d normalized=%d", opts.ChatIDRaw, opts.ChatID)
+	}
+	if opts.TopicID != 42 || !opts.TopicIDSet {
+		t.Fatalf("unexpected topic id state: id=%d set=%v", opts.TopicID, opts.TopicIDSet)
+	}
+	if !opts.UseDateRange || !opts.UseUntil {
+		t.Fatalf("expected since and until filters: %+v", opts)
+	}
+	if opts.DBPath != "tmp/tg.db" || opts.AccountID != 2 {
+		t.Fatalf("unexpected db/account: %+v", opts)
+	}
+}
+
+func TestParseRunOptions_ExportAllowsUntilOnly(t *testing.T) {
+	opts, err := parseRunOptions([]string{"export", "--id", "123", "--until", "2024-01-31"}, fixedNow)
+	if err != nil {
+		t.Fatalf("parseRunOptions error: %v", err)
+	}
+	if opts.UseDateRange {
+		t.Fatal("did not expect since filter")
+	}
+	if !opts.UseUntil {
+		t.Fatal("expected until filter")
+	}
+}
+
+func TestParseRunOptions_ExportRequiresID(t *testing.T) {
+	_, err := parseRunOptions([]string{"export", "--db", "tmp/tg.db"}, fixedNow)
+	if err == nil {
+		t.Fatal("expected error")
+	}
+	if !strings.Contains(err.Error(), "export requires --id") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+}
+
 func TestParseRunOptions_RejectsFormat(t *testing.T) {
 	_, err := parseRunOptions([]string{"history", "--format", "xml"}, fixedNow)
 	if err == nil {

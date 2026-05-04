@@ -14,6 +14,10 @@ func closeStmt(stmt *sql.Stmt) {
 	_ = stmt.Close()
 }
 
+func closeRows(rows *sql.Rows) {
+	_ = rows.Close()
+}
+
 func boolInt(v bool) int {
 	if v {
 		return 1

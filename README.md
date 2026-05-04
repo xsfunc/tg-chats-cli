@@ -12,6 +12,7 @@ First read: `README.md` (this file) and `AGENTS.md` for repo-specific rules.
 High-level flow:
 - `cmd/tg-summary` parses flags and launches the app.
 - `internal/app` orchestrates login, TUI flow, DB history, unread sync, and mark-as-read.
+- `internal/exporter` renders offline SQLite chat lists and Markdown transcripts.
 - `internal/telegram` wraps the Telegram client, dialog/topic lookup, history fetch, and mark-as-read calls.
 - `internal/store` owns the storage interface, SQLite schema, migrations, account scoping, upserts, and run metadata.
 - `internal/tui` contains Bubble Tea models for chat and topic selection.
@@ -124,6 +125,12 @@ The default command is `history`. It opens the TUI, lets you choose a chat or fo
 
 # Use a separate Telegram session while sharing the same message database
 ./bin/tg-summary sync --session session/account-a.db --db data/tg-summary.db
+
+# List cached chats and forum topics without logging in to Telegram
+./bin/tg-summary chats --db data/tg-summary.db
+
+# Export cached messages as a Markdown transcript for manual LLM copy/paste
+./bin/tg-summary export --id 123456789 --since 2026-04-24 --until 2026-05-03
 ```
 
 ## Install From GitHub Releases With mise
@@ -195,6 +202,50 @@ For `sync --id <forum>`, topic flags are optional. Without a topic filter, sync 
 
 `--id` accepts both raw MTProto `ChannelID` values and Bot API style `-100...` IDs (which are normalized automatically).
 To find chat IDs, use a Bot API-based tool or client that exposes chat IDs; channels/supergroups are often shown with the `-100...` prefix.
+
+## Offline SQLite Export
+
+Use `chats` and `export` to read from the cached SQLite database without loading Telegram configuration, creating a Telegram client, or logging in.
+If the database contains one account, it is selected automatically. If it contains multiple accounts, pass `--account-id`.
+
+```bash
+# Show cached chats, message counts, date ranges, and cached forum topics
+./bin/tg-summary chats --db data/tg-summary.db
+
+# Export all cached messages for a chat
+./bin/tg-summary export --id -1001234567890 --db data/tg-summary.db
+
+# Export one cached forum topic
+./bin/tg-summary export --id -1001234567890 --topic-id 42
+
+# Export a local-date range; timestamps are printed in the local timezone with offset
+./bin/tg-summary export --id -1001234567890 --since 2026-04-24 --until 2026-05-03
+
+# Choose an account explicitly when one database contains multiple accounts
+./bin/tg-summary export --account-id 2 --id 123456789
+```
+
+Markdown export prints a compact chronological transcript:
+
+```md
+# Telegram Chat Export
+
+Account: Test (@test), account_id=1
+Chat: Project, chat_id=123456789
+Topic: Release, topic_id=42
+Range: 2026-05-03 21:20 +03:00 .. 2026-05-03 21:21 +03:00
+Messages: 2
+
+## Transcript
+
+[2026-05-03 21:20 +03:00] Alice (@alice):
+Message text
+
+[2026-05-03 21:21 +03:00] Me:
+Reply text
+```
+
+Sender names come from cached `users` rows. Outgoing messages are labeled `Me`; missing user rows fall back to `sender_id=<id>`.
 
 ## How It Works
 
@@ -274,13 +325,14 @@ These settings reduce risk but do not guarantee that Telegram will not limit or 
 
 ## CLI Flags
 
-- Commands: `history` and `sync`; no command means `history`.
+- Commands: `history`, `sync`, `chats`, and `export`; no command means `history`.
 - `--db <path>` SQLite database path (default `data/tg-summary.db`).
 - `--session <path>` Telegram session SQLite path (default `session/session.db` or `TG_SESSION_PATH`).
-- `--since YYYY-MM-DD` start date for history mode (enables date range mode).
-- `--until YYYY-MM-DD` end date for history mode (requires `--since`; defaults to now when omitted).
-- `--id <int64>` chat ID (raw or `-100...`) to run without TUI.
-- `--topic-id <int>` forum topic ID for non-interactive mode.
+- `--account-id <int>` SQLite account ID for offline commands when the database contains multiple accounts.
+- `--since YYYY-MM-DD` start date for history mode or offline export.
+- `--until YYYY-MM-DD` end date for history mode or offline export (`history` requires `--since`; `export` also allows `--until` by itself).
+- `--id <int64>` chat ID (raw or `-100...`) to run without TUI, or to export from SQLite.
+- `--topic-id <int>` forum topic ID for non-interactive mode or offline export.
 - `--topic <string>` forum topic title for non-interactive mode.
 - `--chat-limit <n>` maximum unread chats to sync; `0` means unlimited (`sync` only).
 - `--message-limit <n>` maximum messages per chat/topic; `0` means unlimited.
@@ -304,6 +356,7 @@ The database is migrated automatically with `PRAGMA user_version`.
 cmd/tg-summary/     - CLI entry point and flag parsing
 internal/app/       - Orchestrates login, TUI flow, history, sync, mark-as-read
 internal/config/    - Env config loader
+internal/exporter/  - Offline SQLite chat listing and Markdown transcript rendering
 internal/store/     - Storage interface, SQLite schema/migrations, accounts, saves, run metadata
 internal/telegram/  - Telegram client wrapper split by login, dialogs, history, topics, mark-as-read
 internal/tui/       - Bubble Tea TUI models for chat/topic selection

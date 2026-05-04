@@ -4,6 +4,7 @@ import (
 	"context"
 	"database/sql"
 	"path/filepath"
+	"strings"
 	"testing"
 	"time"
 
@@ -147,6 +148,143 @@ func TestStoreScopesRowsByAccount(t *testing.T) {
 	}
 }
 
+func TestStoreReadQueries(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "tg.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() {
+		_ = s.Close()
+	}()
+	setTestAccount(t, ctx, s, 111)
+	if err := s.SaveUsers(ctx, []telegram.User{
+		{ID: 42, Username: "alice", FirstName: "Alice"},
+		{ID: 43, FirstName: "Bob"},
+	}); err != nil {
+		t.Fatalf("save users: %v", err)
+	}
+	if err := s.SaveChats(ctx, []telegram.Chat{
+		{ID: 10, Title: "General", IsChannel: true},
+		{ID: 20, Title: "Forum", IsChannel: true, IsForum: true},
+	}); err != nil {
+		t.Fatalf("save chats: %v", err)
+	}
+	if err := s.SaveTopics(ctx, 20, []telegram.Topic{{ID: 7, Title: "Release"}}); err != nil {
+		t.Fatalf("save topics: %v", err)
+	}
+	if _, err := s.SaveMessages(ctx, 10, 0, []telegram.Message{
+		{ID: 2, Date: time.Unix(200, 0), Text: "second", SenderID: 43},
+		{ID: 1, Date: time.Unix(100, 0), Text: "first", SenderID: 42},
+	}); err != nil {
+		t.Fatalf("save chat messages: %v", err)
+	}
+	if _, err := s.SaveMessages(ctx, 20, 7, []telegram.Message{
+		{ID: 3, Date: time.Unix(300, 0), Text: "topic", SenderID: 42, Outgoing: true},
+	}); err != nil {
+		t.Fatalf("save topic messages: %v", err)
+	}
+
+	accountID, err := s.ResolveAccountID(ctx, 0)
+	if err != nil {
+		t.Fatalf("resolve account: %v", err)
+	}
+	if accountID != 1 {
+		t.Fatalf("account id = %d, want 1", accountID)
+	}
+
+	chats, err := s.ListChatSummaries(ctx, accountID)
+	if err != nil {
+		t.Fatalf("list chats: %v", err)
+	}
+	if len(chats) != 2 {
+		t.Fatalf("chat count = %d, want 2", len(chats))
+	}
+	general := findStoreChat(t, chats, 10)
+	if general.MessageCount != 2 || !general.FirstMessage.Equal(time.Unix(100, 0).UTC()) || !general.LastMessage.Equal(time.Unix(200, 0).UTC()) {
+		t.Fatalf("unexpected general summary: %+v", general)
+	}
+
+	topics, err := s.ListTopicSummaries(ctx, accountID, 20)
+	if err != nil {
+		t.Fatalf("list topics: %v", err)
+	}
+	if len(topics) != 1 || topics[0].ID != 7 || topics[0].MessageCount != 1 {
+		t.Fatalf("unexpected topics: %+v", topics)
+	}
+
+	data, err := s.ExportMessages(ctx, MessageQuery{AccountID: accountID, ChatID: 10})
+	if err != nil {
+		t.Fatalf("export messages: %v", err)
+	}
+	if len(data.Messages) != 2 || data.Messages[0].ID != 1 || data.Messages[1].ID != 2 {
+		t.Fatalf("messages not chronological: %+v", data.Messages)
+	}
+	if data.Messages[0].SenderUsername != "alice" || data.Messages[1].SenderFirstName != "Bob" {
+		t.Fatalf("sender metadata not joined: %+v", data.Messages)
+	}
+
+	filtered, err := s.ExportMessages(ctx, MessageQuery{
+		AccountID: accountID,
+		ChatID:    10,
+		Since:     time.Unix(150, 0),
+		UseSince:  true,
+		Until:     time.Unix(250, 0),
+		UseUntil:  true,
+	})
+	if err != nil {
+		t.Fatalf("export filtered messages: %v", err)
+	}
+	if len(filtered.Messages) != 1 || filtered.Messages[0].ID != 2 {
+		t.Fatalf("unexpected filtered messages: %+v", filtered.Messages)
+	}
+
+	topicData, err := s.ExportMessages(ctx, MessageQuery{AccountID: accountID, ChatID: 20, TopicID: 7, TopicIDSet: true})
+	if err != nil {
+		t.Fatalf("export topic messages: %v", err)
+	}
+	if !topicData.HasTopic || topicData.Topic.Title != "Release" || len(topicData.Messages) != 1 {
+		t.Fatalf("unexpected topic export: %+v", topicData)
+	}
+
+	empty, err := s.ExportMessages(ctx, MessageQuery{AccountID: accountID, ChatID: 10, Since: time.Unix(999, 0), UseSince: true})
+	if err != nil {
+		t.Fatalf("export empty messages: %v", err)
+	}
+	if len(empty.Messages) != 0 {
+		t.Fatalf("empty message count = %d, want 0", len(empty.Messages))
+	}
+}
+
+func TestStoreResolveAccountRequiresExplicitAccountForMultipleAccounts(t *testing.T) {
+	ctx := context.Background()
+	s, err := Open(ctx, filepath.Join(t.TempDir(), "tg.db"))
+	if err != nil {
+		t.Fatalf("open store: %v", err)
+	}
+	defer func() {
+		_ = s.Close()
+	}()
+	setTestAccount(t, ctx, s, 111)
+	setTestAccount(t, ctx, s, 222)
+
+	_, err = s.ResolveAccountID(ctx, 0)
+	if err == nil {
+		t.Fatal("expected multi-account error")
+	}
+	if err != nil && !strings.Contains(err.Error(), "multiple accounts found") {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	accountID, err := s.ResolveAccountID(ctx, 2)
+	if err != nil {
+		t.Fatalf("resolve explicit account: %v", err)
+	}
+	if accountID != 2 {
+		t.Fatalf("account id = %d, want 2", accountID)
+	}
+}
+
 func TestStoreMigratesV1RowsToAccountScope(t *testing.T) {
 	ctx := context.Background()
 	path := filepath.Join(t.TempDir(), "tg.db")
@@ -185,6 +323,17 @@ func TestStoreMigratesV1RowsToAccountScope(t *testing.T) {
 	if text != "legacy" {
 		t.Fatalf("migrated message text = %q, want legacy", text)
 	}
+}
+
+func findStoreChat(t *testing.T, chats []ChatSummary, id int64) ChatSummary {
+	t.Helper()
+	for _, chat := range chats {
+		if chat.ID == id {
+			return chat
+		}
+	}
+	t.Fatalf("chat %d not found in %+v", id, chats)
+	return ChatSummary{}
 }
 
 func setTestAccount(t *testing.T, ctx context.Context, s *SQLiteStore, id int64) {

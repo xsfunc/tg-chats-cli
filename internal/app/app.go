@@ -37,8 +37,11 @@ type RunOptions struct {
 	ChatID         int64
 	ChatIDRaw      int64
 	TopicID        int
+	TopicIDSet     bool
 	TopicTitle     string
 	NonInteractive bool
+	AccountID      int64
+	UseUntil       bool
 }
 
 func (a *App) Run(ctx context.Context, opts RunOptions) error {
