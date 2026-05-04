@@ -31,5 +31,6 @@ mise.local.toml
 coverage.html
 
 # Application Artifacts
+data/
 session/
 exports/
