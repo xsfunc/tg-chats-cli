@@ -34,20 +34,20 @@ run = [
 
 [tasks.build]
 description = "Compile binary to bin/ directory"
-run = "go build -o bin/tg-summary ./cmd/tg-summary"
+run = "go build -o bin/tg-arc ./cmd/tg-arc"
 
 [tasks.install]
 description = "Install to GOPATH/bin"
-run = "go install ./cmd/tg-summary"
+run = "go install ./cmd/tg-arc"
 
 [tasks.dev]
 description = "Run application via go run"
-run = "go run ./cmd/tg-summary"
+run = "go run ./cmd/tg-arc"
 
 [tasks.start]
 description = "Build and run binary"
 depends = ["build"]
-run = "./bin/tg-summary"
+run = "./bin/tg-arc"
 
 [tasks.clean]
 description = "Clean build artifacts"

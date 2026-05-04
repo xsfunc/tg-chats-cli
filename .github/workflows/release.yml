@@ -58,16 +58,16 @@ jobs:
           build() {
             goarch="$1"
             mise_arch="$2"
-            target="tg-summary_${version}_linux_${mise_arch}"
+            target="tg-arc_${version}_linux_${mise_arch}"
 
             mkdir -p "dist/${target}"
             CGO_ENABLED=0 GOOS=linux GOARCH="${goarch}" go build \
               -trimpath \
               -ldflags="-s -w" \
-              -o "dist/${target}/tg-summary" \
-              ./cmd/tg-summary
+              -o "dist/${target}/tg-arc" \
+              ./cmd/tg-arc
 
-            tar -C "dist/${target}" -czf "dist/${target}.tar.gz" tg-summary
+            tar -C "dist/${target}" -czf "dist/${target}.tar.gz" tg-arc
           }
 
           build amd64 x64

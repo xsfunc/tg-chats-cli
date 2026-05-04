@@ -7,9 +7,9 @@ import (
 	"strings"
 	"time"
 
-	"cli-tg-chat-summary/internal/config"
-	"cli-tg-chat-summary/internal/store"
-	"cli-tg-chat-summary/internal/telegram"
+	"tg-arc/internal/config"
+	"tg-arc/internal/store"
+	"tg-arc/internal/telegram"
 )
 
 type App struct {

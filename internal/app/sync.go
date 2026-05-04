@@ -5,8 +5,8 @@ import (
 	"fmt"
 	"os"
 
-	"cli-tg-chat-summary/internal/store"
-	"cli-tg-chat-summary/internal/telegram"
+	"tg-arc/internal/store"
+	"tg-arc/internal/telegram"
 )
 
 func (a *App) runSync(ctx context.Context, opts RunOptions) error {

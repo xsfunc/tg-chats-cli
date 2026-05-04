@@ -4,7 +4,7 @@ import (
 	"context"
 	"time"
 
-	"cli-tg-chat-summary/internal/telegram"
+	"tg-arc/internal/telegram"
 )
 
 type SyncRun struct {

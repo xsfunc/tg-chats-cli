@@ -5,7 +5,7 @@ import (
 	"fmt"
 	"time"
 
-	"cli-tg-chat-summary/internal/telegram"
+	"tg-arc/internal/telegram"
 )
 
 func (s *SQLiteStore) SaveUsers(ctx context.Context, users []telegram.User) error {

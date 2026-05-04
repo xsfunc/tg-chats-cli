@@ -5,7 +5,7 @@ import (
 	"strings"
 	"time"
 
-	"cli-tg-chat-summary/internal/telegram"
+	"tg-arc/internal/telegram"
 
 	"github.com/charmbracelet/bubbles/key"
 	"github.com/charmbracelet/bubbles/list"

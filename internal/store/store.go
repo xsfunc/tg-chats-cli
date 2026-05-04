@@ -10,7 +10,7 @@ import (
 	_ "github.com/glebarez/go-sqlite"
 )
 
-const DefaultPath = "data/tg-summary.db"
+const DefaultPath = "data/tg-arc.db"
 
 type SQLiteStore struct {
 	db        *sql.DB

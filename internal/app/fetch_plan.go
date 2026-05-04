@@ -4,7 +4,7 @@ import (
 	"context"
 	"fmt"
 
-	"cli-tg-chat-summary/internal/telegram"
+	"tg-arc/internal/telegram"
 )
 
 type fetchPlan struct {

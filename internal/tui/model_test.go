@@ -3,7 +3,7 @@ package tui
 import (
 	"testing"
 
-	"cli-tg-chat-summary/internal/telegram"
+	"tg-arc/internal/telegram"
 
 	tea "github.com/charmbracelet/bubbletea"
 )
@@ -457,7 +457,7 @@ func TestTopicDelegate_Update(t *testing.T) {
 }
 
 func TestSummaryModel_View(t *testing.T) {
-	model := NewSummaryModel("Test Chat", "data/tg-summary.db", 3, "Messages marked as read.")
+	model := NewSummaryModel("Test Chat", "data/tg-arc.db", 3, "Messages marked as read.")
 	view := model.View()
 	if view == "" {
 		t.Error("expected non-empty view")
@@ -465,7 +465,7 @@ func TestSummaryModel_View(t *testing.T) {
 }
 
 func TestSummaryModel_Update_Enter(t *testing.T) {
-	model := NewSummaryModel("Test Chat", "data/tg-summary.db", 3, "")
+	model := NewSummaryModel("Test Chat", "data/tg-arc.db", 3, "")
 	newModel, cmd := model.Update(tea.KeyMsg{Type: tea.KeyEnter})
 	if cmd != nil {
 		t.Error("expected no command after Enter")

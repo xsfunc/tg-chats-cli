@@ -4,8 +4,8 @@ import (
 	"context"
 	"fmt"
 
-	"cli-tg-chat-summary/internal/telegram"
-	"cli-tg-chat-summary/internal/tui"
+	"tg-arc/internal/telegram"
+	"tg-arc/internal/tui"
 
 	tea "github.com/charmbracelet/bubbletea"
 )

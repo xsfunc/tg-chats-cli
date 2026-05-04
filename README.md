@@ -1,4 +1,4 @@
-# CLI Telegram Chat Summary
+# tg-arc
 
 CLI tool that authenticates with Telegram, lets you pick a chat (or forum topic) via TUI, and saves Telegram history into SQLite.
 It supports one-shot history capture and unread synchronization with limits. This repository currently does not call an LLM; it prepares a local SQLite cache that can be summarized elsewhere.
@@ -10,14 +10,14 @@ Use this section to orient quickly and save context window.
 First read: `README.md` (this file) and `AGENTS.md` for repo-specific rules.
 
 High-level flow:
-- `cmd/tg-summary` parses flags and launches the app.
+- `cmd/tg-arc` parses flags and launches the app.
 - `internal/app` orchestrates login, TUI flow, DB history, unread sync, and mark-as-read.
 - `internal/exporter` renders offline SQLite chat lists and Markdown transcripts.
 - `internal/telegram` wraps the Telegram client, dialog/topic lookup, history fetch, and mark-as-read calls.
 - `internal/store` owns the storage interface, SQLite schema, migrations, account scoping, upserts, and run metadata.
 - `internal/tui` contains Bubble Tea models for chat and topic selection.
 - `internal/config` loads config from process environment variables.
-- Cached messages go to `data/tg-summary.db` by default and sessions to `session/session.db`.
+- Cached messages go to `data/tg-arc.db` by default and sessions to `session/session.db`.
 - Saved rows are scoped by the logged-in Telegram account so multiple accounts can share one message database.
 
 Key behaviors to preserve:
@@ -29,7 +29,7 @@ Key behaviors to preserve:
 - Forum chats require `--topic-id` or `--topic` in non-interactive mode.
 
 Where to look for common tasks:
-- CLI flags or new options: `cmd/tg-summary/`.
+- CLI flags or new options: `cmd/tg-arc/`.
 - SQLite persistence or schema changes: `internal/store/`.
 - Telegram API changes or fetch logic: `internal/telegram/`.
 - TUI changes: `internal/tui/`.
@@ -105,32 +105,32 @@ Or run directly:
 mise dev
 ```
 
-The default command is `history`. It opens the TUI, lets you choose a chat or forum topic, and saves messages to `data/tg-summary.db`.
+The default command is `history`. It opens the TUI, lets you choose a chat or forum topic, and saves messages to `data/tg-arc.db`.
 
 ```bash
-# Same as ./bin/tg-summary
-./bin/tg-summary history
+# Same as ./bin/tg-arc
+./bin/tg-arc history
 
 # Save unread messages from one chat without the TUI
-./bin/tg-summary history --id 123456789
+./bin/tg-arc history --id 123456789
 
 # Save unread messages from all unread chats
-./bin/tg-summary sync
+./bin/tg-arc sync
 
 # Save unread messages from up to 5 chats and 50 messages per chat/topic
-./bin/tg-summary sync --chat-limit 5 --message-limit 50
+./bin/tg-arc sync --chat-limit 5 --message-limit 50
 
 # Use a custom SQLite database path
-./bin/tg-summary sync --db /tmp/tg-summary.db
+./bin/tg-arc sync --db /tmp/tg-arc.db
 
 # Use a separate Telegram session while sharing the same message database
-./bin/tg-summary sync --session session/account-a.db --db data/tg-summary.db
+./bin/tg-arc sync --session session/account-a.db --db data/tg-arc.db
 
 # List cached chats and forum topics without logging in to Telegram
-./bin/tg-summary chats --db data/tg-summary.db
+./bin/tg-arc chats --db data/tg-arc.db
 
 # Export cached messages as a Markdown transcript for manual LLM copy/paste
-./bin/tg-summary export --id 123456789 --since 2026-04-24 --until 2026-05-03
+./bin/tg-arc export --id 123456789 --since 2026-04-24 --until 2026-05-03
 ```
 
 ## Install From GitHub Releases With mise
@@ -145,8 +145,8 @@ git push origin v0.1.0
 
 Then install the latest release on a VPS:
 ```bash
-mise use -g github:username/cli-tg-chat-summary
-tg-summary
+mise use -g github:username/tg-arc
+tg-arc
 ```
 
 Replace `username` with the GitHub account or organization that owns the repository.
@@ -169,10 +169,10 @@ In the TUI, press `m` to choose the history mode. Select `Date range` to enter `
 
 ```bash
 # Save from a specific date until now
-./bin/tg-summary --since 2024-01-01
+./bin/tg-arc --since 2024-01-01
 
 # Save messages within a specific range
-./bin/tg-summary --since 2024-01-01 --until 2024-01-31
+./bin/tg-arc --since 2024-01-01 --until 2024-01-31
 ```
 
 ## Non-Interactive History By Chat ID
@@ -181,10 +181,10 @@ Use `--id` to skip the TUI and save a specific chat in one shot. This works with
 
 ```bash
 # Save unread messages from a chat
-./bin/tg-summary --id 123456789
+./bin/tg-arc --id 123456789
 
 # Save with date range
-./bin/tg-summary --id 123456789 --since 2024-01-01 --until 2024-01-31
+./bin/tg-arc --id 123456789 --since 2024-01-01 --until 2024-01-31
 ```
 
 ### Forum Topics
@@ -192,8 +192,8 @@ Use `--id` to skip the TUI and save a specific chat in one shot. This works with
 For forum chats, you must provide a topic via `--topic-id` or `--topic`:
 
 ```bash
-./bin/tg-summary --id 123456789 --topic-id 42
-./bin/tg-summary --id 123456789 --topic "Release Notes"
+./bin/tg-arc --id 123456789 --topic-id 42
+./bin/tg-arc --id 123456789 --topic "Release Notes"
 ```
 
 For `sync --id <forum>`, topic flags are optional. Without a topic filter, sync saves all unread topics in that forum.
@@ -210,19 +210,19 @@ If the database contains one account, it is selected automatically. If it contai
 
 ```bash
 # Show cached chats, message counts, date ranges, and cached forum topics
-./bin/tg-summary chats --db data/tg-summary.db
+./bin/tg-arc chats --db data/tg-arc.db
 
 # Export all cached messages for a chat
-./bin/tg-summary export --id -1001234567890 --db data/tg-summary.db
+./bin/tg-arc export --id -1001234567890 --db data/tg-arc.db
 
 # Export one cached forum topic
-./bin/tg-summary export --id -1001234567890 --topic-id 42
+./bin/tg-arc export --id -1001234567890 --topic-id 42
 
 # Export a local-date range; timestamps are printed in the local timezone with offset
-./bin/tg-summary export --id -1001234567890 --since 2026-04-24 --until 2026-05-03
+./bin/tg-arc export --id -1001234567890 --since 2026-04-24 --until 2026-05-03
 
 # Choose an account explicitly when one database contains multiple accounts
-./bin/tg-summary export --account-id 2 --id 123456789
+./bin/tg-arc export --account-id 2 --id 123456789
 ```
 
 Markdown export prints a compact chronological transcript:
@@ -282,7 +282,7 @@ Example with shell:
 export TG_APP_ID=your_app_id
 export TG_APP_HASH=your_api_hash
 export TG_PHONE=+1234567890
-tg-summary
+tg-arc
 ```
 
 Example with local mise config:
@@ -299,7 +299,7 @@ TG_PROXY_URL = "socks5://172.28.224.1:1080"
 `mise.local.toml` is ignored by git and is suitable for local secrets. The committed `mise.toml` is for shared tools, non-secret environment settings, and tasks.
 
 The Telegram session file is stored at `session/session.db` by default and can be changed with `TG_SESSION_PATH` or `--session`.
-The message cache defaults to `data/tg-summary.db` and can be changed with `--db`.
+The message cache defaults to `data/tg-arc.db` and can be changed with `--db`.
 One message database can contain multiple Telegram accounts because chats, topics, messages, users, and run metadata are scoped by `account_id`.
 Use a separate session path per Telegram account; reusing one session path means reusing that Telegram login.
 
@@ -326,7 +326,7 @@ These settings reduce risk but do not guarantee that Telegram will not limit or 
 ## CLI Flags
 
 - Commands: `history`, `sync`, `chats`, and `export`; no command means `history`.
-- `--db <path>` SQLite database path (default `data/tg-summary.db`).
+- `--db <path>` SQLite database path (default `data/tg-arc.db`).
 - `--session <path>` Telegram session SQLite path (default `session/session.db` or `TG_SESSION_PATH`).
 - `--account-id <int>` SQLite account ID for offline commands when the database contains multiple accounts.
 - `--since YYYY-MM-DD` start date for history mode or offline export.
@@ -353,7 +353,7 @@ The database is migrated automatically with `PRAGMA user_version`.
 ## Project Structure
 
 ```
-cmd/tg-summary/     - CLI entry point and flag parsing
+cmd/tg-arc/     - CLI entry point and flag parsing
 internal/app/       - Orchestrates login, TUI flow, history, sync, mark-as-read
 internal/config/    - Env config loader
 internal/exporter/  - Offline SQLite chat listing and Markdown transcript rendering

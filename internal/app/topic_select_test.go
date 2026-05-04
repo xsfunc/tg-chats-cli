@@ -4,7 +4,7 @@ import (
 	"strings"
 	"testing"
 
-	"cli-tg-chat-summary/internal/telegram"
+	"tg-arc/internal/telegram"
 )
 
 func TestSelectForumTopic(t *testing.T) {

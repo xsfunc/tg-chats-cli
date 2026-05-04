@@ -1,4 +1,4 @@
-module cli-tg-chat-summary
+module tg-arc
 
 go 1.26.2
 

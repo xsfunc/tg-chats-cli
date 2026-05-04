@@ -10,11 +10,11 @@ import (
 	"os/signal"
 	"time"
 
-	"cli-tg-chat-summary/internal/app"
-	"cli-tg-chat-summary/internal/config"
-	"cli-tg-chat-summary/internal/exporter"
-	"cli-tg-chat-summary/internal/store"
-	"cli-tg-chat-summary/internal/telegram"
+	"tg-arc/internal/app"
+	"tg-arc/internal/config"
+	"tg-arc/internal/exporter"
+	"tg-arc/internal/store"
+	"tg-arc/internal/telegram"
 )
 
 func main() {
@@ -111,7 +111,7 @@ func parseRunOptions(args []string, now func() time.Time) (app.RunOptions, error
 		}
 	}
 
-	fs := flag.NewFlagSet("tg-summary", flag.ContinueOnError)
+	fs := flag.NewFlagSet("tg-arc", flag.ContinueOnError)
 	fs.StringVar(&sinceStr, "since", "", "Start date (YYYY-MM-DD)")
 	fs.StringVar(&untilStr, "until", "", "End date (YYYY-MM-DD)")
 	fs.StringVar(&formatName, "format", "", "Deprecated: file export format is not supported in DB modes")

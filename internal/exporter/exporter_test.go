@@ -5,7 +5,7 @@ import (
 	"testing"
 	"time"
 
-	"cli-tg-chat-summary/internal/store"
+	"tg-arc/internal/store"
 )
 
 func TestRenderMarkdown(t *testing.T) {

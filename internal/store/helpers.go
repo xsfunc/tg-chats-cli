@@ -3,7 +3,7 @@ package store
 import (
 	"database/sql"
 
-	"cli-tg-chat-summary/internal/telegram"
+	"tg-arc/internal/telegram"
 )
 
 func rollback(tx *sql.Tx) {

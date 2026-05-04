@@ -7,7 +7,7 @@ import (
 	"strings"
 	"time"
 
-	"cli-tg-chat-summary/internal/store"
+	"tg-arc/internal/store"
 )
 
 type Options struct {

@@ -8,7 +8,7 @@ import (
 	"testing"
 	"time"
 
-	"cli-tg-chat-summary/internal/config"
+	"tg-arc/internal/config"
 
 	"github.com/celestix/gotgproto"
 )
