@@ -1,382 +1,44 @@
 # tg-arc
 
-CLI tool that authenticates with Telegram, lets you pick a chat (or forum topic) via TUI, and saves Telegram history into SQLite.
-It supports one-shot history capture and unread synchronization with limits. This repository currently does not call an LLM; it prepares a local SQLite cache that can be summarized elsewhere.
+`tg-arc` is a local Telegram archive CLI. It logs in with your Telegram user account, saves incoming text messages from selected chats or forum topics to SQLite, syncs unread messages, marks saved unread ranges as read after successful database writes, and exports cached messages as Markdown.
 
-## AI Agent Guide
-
-Use this section to orient quickly and save context window.
-
-First read: `README.md` (this file) and `AGENTS.md` for repo-specific rules.
-
-High-level flow:
-- `cmd/tg-arc` parses flags and launches the app.
-- `internal/app` orchestrates login, TUI flow, DB history, unread sync, and mark-as-read.
-- `internal/exporter` renders offline SQLite chat lists and Markdown transcripts.
-- `internal/telegram` wraps the Telegram client, dialog/topic lookup, history fetch, and mark-as-read calls.
-- `internal/store` owns the storage interface, SQLite schema, migrations, account scoping, upserts, and run metadata.
-- `internal/tui` contains Bubble Tea models for chat and topic selection.
-- `internal/config` loads config from process environment variables.
-- Cached messages go to `data/tg-arc.db` by default and sessions to `session/session.db`.
-- Saved rows are scoped by the logged-in Telegram account so multiple accounts can share one message database.
-
-Key behaviors to preserve:
-- Unread history mode saves unread messages to SQLite and marks them as read after a successful DB write.
-- Sync mode saves only unread messages from selected chats/topics.
-- Date range mode saves a specific range and does not mark as read.
-- Storage rows are keyed by `account_id`; each Telegram session should use its own session file.
-- `--id` skips TUI and works with `--since` and `--until`.
-- Forum chats require `--topic-id` or `--topic` in non-interactive mode.
-
-Where to look for common tasks:
-- CLI flags or new options: `cmd/tg-arc/`.
-- SQLite persistence or schema changes: `internal/store/`.
-- Telegram API changes or fetch logic: `internal/telegram/`.
-- TUI changes: `internal/tui/`.
-- Config or env updates: `internal/config/`.
-
-Testing and lint:
-- Run `mise run lint` before commits.
-- Run `mise run test` for unit tests.
-- Go formatting is required via `gofmt`.
-- In restricted Codex sandboxes, run `MISE_CACHE_DIR=/tmp/mise-cache mise run lint` if `mise` itself warns about read-only `~/.cache/mise`.
-
-Common pitfalls:
-- Do not change public APIs without explicit request.
-- Avoid new dependencies unless strictly needed.
-- Be explicit about context cancellation and goroutine lifetimes.
-
-Pre-commit checklist:
-1. `gofmt` on changed Go files.
-2. `mise run lint`.
-3. `mise run test` (or the relevant subset).
-4. Update `README.md` if behavior or structure changed.
-5. Check `git status -sb`.
-
-Definition of Done (for tasks):
-1. At least one relevant test or verification step was run.
-2. Documentation reflects any behavior/structure changes.
-3. Diffs are understood and `git status -sb` is clean.
-
-## Prerequisites
-
-- [mise](https://mise.jdx.dev/)
-- Go 1.26.2+
-- Telegram API credentials from [my.telegram.org](https://my.telegram.org)
+It does not call LLMs or send your archive to a remote service.
 
 ## Quick Start
+
+Prerequisites: [mise](https://mise.jdx.dev/) and Telegram API credentials from [my.telegram.org](https://my.telegram.org).
 
 ```bash
 cp mise.local.toml.example mise.local.toml
 $EDITOR mise.local.toml
-mise dev
+mise install
+mise dev -- history
 ```
 
-## Setup
+The first online run prompts for Telegram login code or 2FA when needed. By default, the Telegram session is stored in `session/session.db` and messages are stored in `data/tg-arc.db`.
 
-1. Install dependencies:
-   ```bash
-   mise install
-   go mod download
-   ```
+Common commands:
 
-2. Set environment variables:
-   ```bash
-   export TG_APP_ID=your_app_id
-   export TG_APP_HASH=your_app_hash
-   export TG_PHONE=+1234567890  # optional
-   ```
+```bash
+mise dev -- history                       # interactive chat/topic picker
+mise dev -- sync --chat-limit 5           # save unread messages
+mise dev -- chats                         # list cached chats, offline
+mise dev -- export --id 123456789 > chat.md
+```
 
-   Or use a local mise config file:
-   ```bash
-   cp mise.local.toml.example mise.local.toml
-   $EDITOR mise.local.toml
-   ```
-
-## Usage
+Build a binary with:
 
 ```bash
 mise run build
-mise start
-```
-
-Or run directly:
-```bash
-mise dev
-```
-
-The default command is `history`. It opens the TUI, lets you choose a chat or forum topic, and saves messages to `data/tg-arc.db`.
-
-```bash
-# Same as ./bin/tg-arc
 ./bin/tg-arc history
-
-# Save unread messages from one chat without the TUI
-./bin/tg-arc history --id 123456789
-
-# Save unread messages from all unread chats
-./bin/tg-arc sync
-
-# Save unread messages from up to 5 chats and 50 messages per chat/topic
-./bin/tg-arc sync --chat-limit 5 --message-limit 50
-
-# Use a custom SQLite database path
-./bin/tg-arc sync --db /tmp/tg-arc.db
-
-# Use a separate Telegram session while sharing the same message database
-./bin/tg-arc sync --session session/account-a.db --db data/tg-arc.db
-
-# List cached chats and forum topics without logging in to Telegram
-./bin/tg-arc chats --db data/tg-arc.db
-
-# Export cached messages as a Markdown transcript for manual LLM copy/paste
-./bin/tg-arc export --id 123456789 --since 2026-04-24 --until 2026-05-03
 ```
 
-## Install From GitHub Releases With mise
-
-Release tags named `v*` publish Linux `x64` and `arm64` archives that the mise GitHub backend can autodetect.
-
-Create a release by pushing a version tag:
-```bash
-git tag v0.1.0
-git push origin v0.1.0
-```
-
-Then install the latest release on a VPS:
-```bash
-mise use -g github:username/tg-arc
-tg-arc
-```
-
-Replace `username` with the GitHub account or organization that owns the repository.
-
-Note: Interactive history mode runs entirely inside the TUI (single alt-screen session) and does not print status messages to stdout.
-It must be started from an interactive terminal. If stdin is piped or the command is run by a non-TTY wrapper, the app exits with a clear error; use `history --id` or `sync` for non-interactive runs.
-
-TUI quick keys:
-- `ctrl+c` to exit at any time.
-- `q`/`esc` to exit from the chat list (in the topic list, `q`/`esc` goes back).
-- `m` to switch history mode, `ctrl+r` to mark a chat as read (forum chats mark all topics).
-
-
-## Date Range History
-
-You can save messages from a specific date range instead of just unread messages.
-When using date range mode, messages will NOT be marked as read.
-
-In the TUI, press `m` to choose the history mode. Select `Date range` to enter `since` and `until` interactively.
-
-```bash
-# Save from a specific date until now
-./bin/tg-arc --since 2024-01-01
-
-# Save messages within a specific range
-./bin/tg-arc --since 2024-01-01 --until 2024-01-31
-```
-
-## Non-Interactive History By Chat ID
-
-Use `--id` to skip the TUI and save a specific chat in one shot. This works with date ranges too.
-
-```bash
-# Save unread messages from a chat
-./bin/tg-arc --id 123456789
-
-# Save with date range
-./bin/tg-arc --id 123456789 --since 2024-01-01 --until 2024-01-31
-```
-
-### Forum Topics
-
-For forum chats, you must provide a topic via `--topic-id` or `--topic`:
-
-```bash
-./bin/tg-arc --id 123456789 --topic-id 42
-./bin/tg-arc --id 123456789 --topic "Release Notes"
-```
-
-For `sync --id <forum>`, topic flags are optional. Without a topic filter, sync saves all unread topics in that forum.
-
-### `-100...` IDs
-
-`--id` accepts both raw MTProto `ChannelID` values and Bot API style `-100...` IDs (which are normalized automatically).
-To find chat IDs, use a Bot API-based tool or client that exposes chat IDs; channels/supergroups are often shown with the `-100...` prefix.
-
-## Offline SQLite Export
-
-Use `chats` and `export` to read from the cached SQLite database without loading Telegram configuration, creating a Telegram client, or logging in.
-If the database contains one account, it is selected automatically. If it contains multiple accounts, pass `--account-id`.
-
-```bash
-# Show cached chats, message counts, date ranges, and cached forum topics
-./bin/tg-arc chats --db data/tg-arc.db
-
-# Export all cached messages for a chat
-./bin/tg-arc export --id -1001234567890 --db data/tg-arc.db
-
-# Export one cached forum topic
-./bin/tg-arc export --id -1001234567890 --topic-id 42
-
-# Export a local-date range; timestamps are printed in the local timezone with offset
-./bin/tg-arc export --id -1001234567890 --since 2026-04-24 --until 2026-05-03
-
-# Choose an account explicitly when one database contains multiple accounts
-./bin/tg-arc export --account-id 2 --id 123456789
-```
-
-Markdown export prints a compact chronological transcript:
-
-```md
-# Telegram Chat Export
-
-Account: Test (@test), account_id=1
-Chat: Project, chat_id=123456789
-Topic: Release, topic_id=42
-Range: 2026-05-03 21:20 +03:00 .. 2026-05-03 21:21 +03:00
-Messages: 2
-
-## Transcript
-
-[2026-05-03 21:20 +03:00] Alice (@alice):
-Message text
-
-[2026-05-03 21:21 +03:00] Me:
-Reply text
-```
-
-Sender names come from cached `users` rows. Outgoing messages are labeled `Me`; missing user rows fall back to `sender_id=<id>`.
-
-## How It Works
-
-1. Authenticate with Telegram using `gotgproto`.
-2. Fetch dialogs and show them in a TUI list (Bubble Tea, alternate screen).
-3. If the selected chat is a forum, show a second TUI to select a topic.
-4. Save chats, users, topics, messages, and run metadata into SQLite.
-5. In unread history and sync modes, mark messages as read up to the max saved ID after the DB write succeeds.
-6. If `--message-limit` truncates unread messages for a chat/topic, skip mark-as-read for that item and record a warning.
-7. Show a save summary screen and return to the chat list on Enter.
-
-## Configuration
-
-The CLI is configured via process environment variables. It does not load `.env` files directly.
-Use your shell, mise, direnv, Docker, CI secrets, systemd, or another environment manager to provide the variables.
-
-Required:
-- `TG_APP_ID` integer app ID from Telegram.
-- `TG_APP_HASH` app hash from Telegram.
-
-Optional:
-- `TG_PHONE` phone number for login.
-- `TG_SESSION_PATH` Telegram session SQLite path (default `session/session.db`).
-- `TG_PROXY_URL` SOCKS proxy URL for Telegram MTProto connections, for example `socks5://172.28.224.1:1080`.
-- `LOG_LEVEL` `debug|info|warn|error` (default `info`).
-- `RATE_LIMIT_MS` positive request interval in milliseconds (default `350`; non-positive values use the default).
-- `TG_CONNECT_TIMEOUT_SECONDS` maximum time to wait for Telegram client startup network phases before aborting (default `60`, set `0` to disable). Time spent waiting for phone/code/2FA input is not counted.
-- `HISTORY_DELAY_MIN_MS` minimum pause between Telegram history pages (default `2000`).
-- `HISTORY_DELAY_MAX_MS` maximum pause between Telegram history pages (default `4000`).
-- `FLOOD_WAIT_MAX_SECONDS` maximum Telegram flood-wait delay to handle automatically (default `900`).
-
-Example with shell:
-```bash
-export TG_APP_ID=your_app_id
-export TG_APP_HASH=your_api_hash
-export TG_PHONE=+1234567890
-tg-arc
-```
-
-Example with local mise config:
-```toml
-# mise.local.toml
-[env]
-TG_APP_ID = "your_app_id"
-TG_APP_HASH = "your_api_hash"
-TG_PHONE = "+1234567890"
-# Optional, useful when Telegram is reachable only through a local Xray SOCKS inbound.
-TG_PROXY_URL = "socks5://172.28.224.1:1080"
-```
-
-`mise.local.toml` is ignored by git and is suitable for local secrets. The committed `mise.toml` is for shared tools, non-secret environment settings, and tasks.
-
-The Telegram session file is stored at `session/session.db` by default and can be changed with `TG_SESSION_PATH` or `--session`.
-The message cache defaults to `data/tg-arc.db` and can be changed with `--db`.
-One message database can contain multiple Telegram accounts because chats, topics, messages, users, and run metadata are scoped by `account_id`.
-Use a separate session path per Telegram account; reusing one session path means reusing that Telegram login.
-
-## Troubleshooting
-
-If startup stops after the GoTGProto banner without asking for input, the client is still trying to connect to Telegram. By default the app aborts each startup network phase after `TG_CONNECT_TIMEOUT_SECONDS=60` with a diagnostic error. Check network or proxy access to Telegram, try `LOG_LEVEL=debug`, or increase/disable the startup timeout with `TG_CONNECT_TIMEOUT_SECONDS=0` if your connection needs longer. When the app asks for phone, code, or 2FA input, that human input time is not counted against the startup timeout.
-
-For WSL with Xray running on Windows, set `TG_PROXY_URL` to the Windows host IP and Xray SOCKS port. The Windows host IP is usually the `nameserver` value from `/etc/resolv.conf` inside WSL:
-
-```bash
-export TG_PROXY_URL=socks5://172.28.224.1:1080
-```
-
-HTTP proxies are not supported for Telegram MTProto connections; use an Xray SOCKS inbound.
-
-## Telegram Safety Pauses
-
-History and sync use an additional pacer for `messages.getHistory` and forum topic history calls. The first history page is requested immediately, then later pages wait for a random delay between `HISTORY_DELAY_MIN_MS` and `HISTORY_DELAY_MAX_MS`. This jitter avoids fixed metronome-like request timing.
-
-If Telegram returns a `FLOOD_WAIT`, the client logs the wait, slows future history requests with adaptive backoff, and retries only when the requested wait is no longer than `FLOOD_WAIT_MAX_SECONDS`. Longer waits stop the run with an error instead of leaving the process paused for a long time.
-
-These settings reduce risk but do not guarantee that Telegram will not limit or ban an account. Avoid large full-history saves, repeated runs, multiple concurrent sessions, and unnecessary mark-as-read actions.
-
-## CLI Flags
-
-- Commands: `history`, `sync`, `chats`, and `export`; no command means `history`.
-- `--db <path>` SQLite database path (default `data/tg-arc.db`).
-- `--session <path>` Telegram session SQLite path (default `session/session.db` or `TG_SESSION_PATH`).
-- `--account-id <int>` SQLite account ID for offline commands when the database contains multiple accounts.
-- `--since YYYY-MM-DD` start date for history mode or offline export.
-- `--until YYYY-MM-DD` end date for history mode or offline export (`history` requires `--since`; `export` also allows `--until` by itself).
-- `--id <int64>` chat ID (raw or `-100...`) to run without TUI, or to export from SQLite.
-- `--topic-id <int>` forum topic ID for non-interactive mode or offline export.
-- `--topic <string>` forum topic title for non-interactive mode.
-- `--chat-limit <n>` maximum unread chats to sync; `0` means unlimited (`sync` only).
-- `--message-limit <n>` maximum messages per chat/topic; `0` means unlimited.
-
-`--format` is no longer supported because normal CLI output is SQLite-only.
-
-## SQLite Schema
-
-The database is migrated automatically with `PRAGMA user_version`.
-
-- `accounts`: logged-in Telegram accounts; existing v1 SQLite rows are migrated to a legacy account and adopted by the next logged-in account.
-- `users`: Telegram users seen in dialog/history responses, keyed by `(account_id, id)`.
-- `chats`: dialogs and chat metadata, including unread counters and read cursors, keyed by `(account_id, id)`.
-- `topics`: forum topics keyed by `(account_id, chat_id, topic_id)`.
-- `messages`: text messages keyed by `(account_id, chat_id, topic_id, message_id)`.
-- `sync_runs` and `sync_run_items`: history/sync run status, saved counts, mark-read status, warnings, and errors.
-
-## Project Structure
-
-```
-cmd/tg-arc/     - CLI entry point and flag parsing
-internal/app/       - Orchestrates login, TUI flow, history, sync, mark-as-read
-internal/config/    - Env config loader
-internal/exporter/  - Offline SQLite chat listing and Markdown transcript rendering
-internal/store/     - Storage interface, SQLite schema/migrations, accounts, saves, run metadata
-internal/telegram/  - Telegram client wrapper split by login, dialogs, history, topics, mark-as-read
-internal/tui/       - Bubble Tea TUI models for chat/topic selection
-```
-
-## Development
-
-| Command | Description |
-|---------|-------------|
-| `mise run` | Show help with all available commands |
-| `mise run all` | Full cycle: tidy, lint, test, build |
-| `mise run ci` | CI pipeline: clean build from scratch |
-| `mise run build` | Compile binary to `bin/` directory |
-| `mise run install` | Install to `$GOPATH/bin` |
-| `mise dev` | Run via `go run` (example: `mise dev -- history --since 2024-01-01`) |
-| `mise start` | Build and run binary |
-| `mise run clean` | Clean build artifacts |
-| `mise run tidy` | Update dependencies (`go mod tidy`) |
-| `mise run lint` | Run golangci-lint |
-| `mise run test` | Run unit tests |
-| `mise run test-nocache` | Run tests without cache |
-| `mise run test-cover` | Run tests with coverage report |
-| `mise run setup-hooks` | Install git hooks |
+## Documentation
+
+- [Setup](docs/setup.md): prerequisites, Telegram credentials, environment variables, local secrets, proxy notes.
+- [CLI Usage](docs/usage.md): commands, flags, interactive and non-interactive examples.
+- [Data And Export](docs/data.md): SQLite scope, schema summary, offline chat listing, Markdown export.
+- [Architecture](docs/architecture.md): package map, application flow, important invariants.
+- [Development](docs/development.md): mise tasks, tests, lint, hooks, release workflow.
+
+For agent-specific repository rules, see [AGENTS.md](AGENTS.md).
