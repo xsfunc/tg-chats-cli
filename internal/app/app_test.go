@@ -89,3 +89,19 @@ func TestMarkMessagesAsReadSkipsTruncatedResults(t *testing.T) {
 		t.Fatalf("unexpected warning: %q", got.Warning)
 	}
 }
+
+func TestMarkMessagesAsReadSkipsStoppedResults(t *testing.T) {
+	app := &App{}
+	result := telegram.MessageFetchResult{
+		Messages: []telegram.Message{{ID: 10}},
+		Stopped:  true,
+	}
+
+	got := app.markMessagesAsRead(context.Background(), telegram.Chat{ID: 1}, nil, result, RunOptions{})
+	if got.Attempted {
+		t.Fatal("did not expect mark-as-read attempt")
+	}
+	if !strings.Contains(got.Warning, "stopped before all unread messages were fetched") {
+		t.Fatalf("unexpected warning: %q", got.Warning)
+	}
+}

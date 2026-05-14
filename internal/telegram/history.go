@@ -22,24 +22,24 @@ func (c *Client) GetUnreadMessagesWithOptions(ctx context.Context, chatID int64,
 		return MessageFetchResult{}, fmt.Errorf("peer %d not found in cache or storage", chatID)
 	}
 
-	return c.fetchMessages(
+	return c.fetchMessagesForward(
 		ctx,
 		progress,
 		"unread",
-		time.Time{},
-		false,
-		func(offsetID, offsetDate, limit int) (tg.MessagesMessagesClass, error) {
-			_ = offsetDate
+		lastReadID,
+		func(offsetID, addOffset, limit int) (tg.MessagesMessagesClass, error) {
 			req := &tg.MessagesGetHistoryRequest{
-				Peer:     inputPeer,
-				Limit:    limit,
-				OffsetID: offsetID,
+				Peer:      inputPeer,
+				OffsetID:  offsetID,
+				AddOffset: addOffset,
+				Limit:     limit,
+				MinID:     lastReadID,
 			}
 			return c.ctx.Raw.MessagesGetHistory(ctx, req)
 		},
 		func(msg *tg.Message) (bool, bool) {
 			if msg.ID <= lastReadID {
-				return false, true
+				return false, false
 			}
 			if msg.Message == "" || msg.Out {
 				return false, false
@@ -64,27 +64,29 @@ func (c *Client) GetTopicMessagesWithOptions(ctx context.Context, chatID int64, 
 		return MessageFetchResult{}, fmt.Errorf("peer %d not found", chatID)
 	}
 
-	return c.fetchMessages(
+	return c.fetchMessagesForward(
 		ctx,
 		progress,
 		"topic-unread",
-		time.Time{},
-		false,
-		func(offsetID, offsetDate, limit int) (tg.MessagesMessagesClass, error) {
-			_ = offsetDate
+		lastReadID,
+		func(offsetID, addOffset, limit int) (tg.MessagesMessagesClass, error) {
 			if topicID == 1 {
 				req := &tg.MessagesGetHistoryRequest{
-					Peer:     inputPeer,
-					Limit:    limit,
-					OffsetID: offsetID,
+					Peer:      inputPeer,
+					OffsetID:  offsetID,
+					AddOffset: addOffset,
+					Limit:     limit,
+					MinID:     lastReadID,
 				}
 				return c.ctx.Raw.MessagesGetHistory(ctx, req)
 			}
 			req := &tg.MessagesGetRepliesRequest{
-				Peer:     inputPeer,
-				MsgID:    topicID,
-				Limit:    limit,
-				OffsetID: offsetID,
+				Peer:      inputPeer,
+				MsgID:     topicID,
+				OffsetID:  offsetID,
+				AddOffset: addOffset,
+				Limit:     limit,
+				MinID:     lastReadID,
 			}
 			return c.ctx.Raw.MessagesGetReplies(ctx, req)
 		},
@@ -97,7 +99,7 @@ func (c *Client) GetTopicMessagesWithOptions(ctx context.Context, chatID int64, 
 				}
 			}
 			if msg.ID <= lastReadID {
-				return false, true
+				return false, false
 			}
 			if msg.Message == "" || msg.Out {
 				return false, false
@@ -267,12 +269,24 @@ func (c *Client) fetchMessages(
 	var allUsers []User
 	var allChats []Chat
 	seenUsers := make(map[int64]struct{})
+	truncated := false
+	buildResult := func(stopped bool) MessageFetchResult {
+		return MessageFetchResult{
+			Messages:  allMessages,
+			Users:     allUsers,
+			Chats:     dedupeChats(allChats),
+			Truncated: truncated,
+			Stopped:   stopped,
+		}
+	}
 	offsetID := 0
 	batchSize := 100
-	page := 0
-	truncated := false
 
 	for {
+		if stopRequested(opts.Stop) {
+			return buildResult(true), nil
+		}
+
 		offsetDate := 0
 		if useOffsetDate && offsetID == 0 && !until.IsZero() {
 			offsetDate = int(until.Unix())
@@ -281,8 +295,14 @@ func (c *Client) fetchMessages(
 			})
 		}
 
-		if page > 0 && c.historyPacer != nil {
-			if err := c.historyPacer.Wait(ctx, progress); err != nil {
+		if c.historyPacer != nil {
+			waitCtx, cancelWait := contextWithStop(ctx, opts.Stop)
+			err := c.historyPacer.Wait(waitCtx, progress)
+			cancelWait()
+			if err != nil {
+				if stopRequested(opts.Stop) {
+					return buildResult(true), nil
+				}
 				return MessageFetchResult{}, fmt.Errorf("history request pause: %w", err)
 			}
 		}
@@ -294,7 +314,6 @@ func (c *Client) fetchMessages(
 		if c.historyPacer != nil {
 			c.historyPacer.RecordSuccess()
 		}
-		page++
 		allUsers = appendUsers(allUsers, seenUsers, extractMessageUsers(result))
 		c.processPeerEntities(extractMessageChats(result), extractMessageUsers(result))
 		allChats = append(allChats, c.chatsFromEntities(extractMessageChats(result), extractMessageUsers(result))...)
@@ -332,6 +351,9 @@ func (c *Client) fetchMessages(
 			})
 		}
 
+		if stopRequested(opts.Stop) {
+			return buildResult(true), nil
+		}
 		if stop {
 			break
 		}
@@ -345,7 +367,151 @@ func (c *Client) fetchMessages(
 		}
 	}
 
-	return MessageFetchResult{Messages: allMessages, Users: allUsers, Chats: dedupeChats(allChats), Truncated: truncated}, nil
+	return buildResult(false), nil
+}
+
+func (c *Client) fetchMessagesForward(
+	ctx context.Context,
+	progress ProgressFunc,
+	phase string,
+	startID int,
+	fetch func(offsetID, addOffset, limit int) (tg.MessagesMessagesClass, error),
+	filter func(msg *tg.Message) (process bool, stop bool),
+	opts MessageFetchOptions,
+) (MessageFetchResult, error) {
+	var allMessages []Message
+	var allUsers []User
+	var allChats []Chat
+	seenUsers := make(map[int64]struct{})
+	truncated := false
+	buildResult := func(stopped bool) MessageFetchResult {
+		return MessageFetchResult{
+			Messages:        allMessages,
+			Users:           allUsers,
+			Chats:           dedupeChats(allChats),
+			Truncated:       truncated,
+			Stopped:         stopped,
+			PartialReadSafe: stopped,
+		}
+	}
+	offsetID := startID
+	batchSize := 100
+
+	for {
+		if stopRequested(opts.Stop) {
+			return buildResult(true), nil
+		}
+
+		if c.historyPacer != nil {
+			waitCtx, cancelWait := contextWithStop(ctx, opts.Stop)
+			err := c.historyPacer.Wait(waitCtx, progress)
+			cancelWait()
+			if err != nil {
+				if stopRequested(opts.Stop) {
+					return buildResult(true), nil
+				}
+				return MessageFetchResult{}, fmt.Errorf("history request pause: %w", err)
+			}
+		}
+
+		result, err := fetch(offsetID, -batchSize, batchSize)
+		if err != nil {
+			return MessageFetchResult{}, err
+		}
+		if c.historyPacer != nil {
+			c.historyPacer.RecordSuccess()
+		}
+		allUsers = appendUsers(allUsers, seenUsers, extractMessageUsers(result))
+		c.processPeerEntities(extractMessageChats(result), extractMessageUsers(result))
+		allChats = append(allChats, c.chatsFromEntities(extractMessageChats(result), extractMessageUsers(result))...)
+
+		msgs := extractMessages(result)
+		if len(msgs) == 0 {
+			break
+		}
+		reverseMessageClasses(msgs)
+
+		batchMessages, lastID, stop := processMessageBatch(msgs, filter)
+		if opts.MessageLimit > 0 && len(allMessages)+len(batchMessages) >= opts.MessageLimit {
+			remaining := opts.MessageLimit - len(allMessages)
+			if remaining < len(batchMessages) {
+				batchMessages = batchMessages[:remaining]
+				if len(batchMessages) > 0 {
+					lastID = batchMessages[len(batchMessages)-1].ID
+				}
+				truncated = true
+			}
+			allMessages = append(allMessages, batchMessages...)
+			reportProgress(progress, ProgressUpdate{
+				Phase:   phase,
+				Parsed:  len(batchMessages),
+				Scanned: len(msgs),
+				Batch:   1,
+			})
+			if len(allMessages) >= opts.MessageLimit {
+				truncated = true
+				break
+			}
+		} else {
+			allMessages = append(allMessages, batchMessages...)
+			reportProgress(progress, ProgressUpdate{
+				Phase:   phase,
+				Parsed:  len(batchMessages),
+				Scanned: len(msgs),
+				Batch:   1,
+			})
+		}
+
+		if stopRequested(opts.Stop) {
+			return buildResult(true), nil
+		}
+		if stop {
+			break
+		}
+		if lastID == 0 {
+			break
+		}
+
+		offsetID = lastID
+		if len(msgs) < batchSize {
+			break
+		}
+	}
+
+	return buildResult(false), nil
+}
+
+func reverseMessageClasses(msgs []tg.MessageClass) {
+	for i, j := 0, len(msgs)-1; i < j; i, j = i+1, j-1 {
+		msgs[i], msgs[j] = msgs[j], msgs[i]
+	}
+}
+
+func stopRequested(stop <-chan struct{}) bool {
+	if stop == nil {
+		return false
+	}
+	select {
+	case <-stop:
+		return true
+	default:
+		return false
+	}
+}
+
+func contextWithStop(ctx context.Context, stop <-chan struct{}) (context.Context, context.CancelFunc) {
+	if stop == nil {
+		return ctx, func() {}
+	}
+	waitCtx, cancel := context.WithCancel(ctx)
+	go func() {
+		select {
+		case <-stop:
+			cancel()
+		case <-waitCtx.Done():
+		}
+	}()
+	return waitCtx, cancel
 }
 
 func processMessageBatch(msgs []tg.MessageClass,

@@ -170,7 +170,7 @@ func (a *App) runNonInteractiveHistory(ctx context.Context, opts RunOptions) err
 		runErr = err
 		return err
 	}
-	result, err := plan.fetch(ctx, nil)
+	result, err := plan.fetch(ctx, nil, nil)
 	if err != nil {
 		status = "error"
 		runErr = err
@@ -303,6 +303,9 @@ func topicID(topic *telegram.Topic) int {
 func (a *App) markMessagesAsRead(ctx context.Context, selectedChat telegram.Chat, selectedTopic *telegram.Topic, result telegram.MessageFetchResult, opts RunOptions) markReadResult {
 	if opts.UseDateRange {
 		return markReadResult{}
+	}
+	if result.Stopped && !result.PartialReadSafe {
+		return markReadResult{Warning: "skipped mark-as-read because parsing was stopped before all unread messages were fetched"}
 	}
 	if result.Truncated {
 		return markReadResult{Warning: "skipped mark-as-read because message limit truncated unread messages"}

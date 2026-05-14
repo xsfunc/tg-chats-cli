@@ -436,7 +436,7 @@ func TestFetchMessages_PaginatesAndReportsProgress(t *testing.T) {
 	}
 }
 
-func TestFetchMessages_PacesBetweenHistoryPages(t *testing.T) {
+func TestFetchMessages_PacesHistoryPagesIncludingFirstRequest(t *testing.T) {
 	pacer := newHistoryPacer(&config.Config{
 		HistoryDelayMinMs: 2000,
 		HistoryDelayMaxMs: 2000,
@@ -492,8 +492,8 @@ func TestFetchMessages_PacesBetweenHistoryPages(t *testing.T) {
 	if callCount != 2 {
 		t.Fatalf("expected 2 fetch calls, got %d", callCount)
 	}
-	if pauses != 1 {
-		t.Fatalf("expected 1 pause between pages, got %d", pauses)
+	if pauses != 2 {
+		t.Fatalf("expected 2 pauses for two history requests, got %d", pauses)
 	}
 	foundPause := false
 	for _, phase := range phases {
@@ -504,6 +504,151 @@ func TestFetchMessages_PacesBetweenHistoryPages(t *testing.T) {
 	}
 	if !foundPause {
 		t.Fatalf("expected pause progress phase, got %v", phases)
+	}
+}
+
+func TestFetchMessages_GracefulStopReturnsPartialResult(t *testing.T) {
+	client := &Client{}
+	stop := make(chan struct{})
+	callCount := 0
+
+	fetch := func(_ int, _ int, limit int) (tg.MessagesMessagesClass, error) {
+		callCount++
+		msgs := make([]tg.MessageClass, 0, limit)
+		for i := 0; i < limit; i++ {
+			msgs = append(msgs, &tg.Message{ID: 200 - i, Date: 1000 - i, Message: "a"})
+		}
+		return &tg.MessagesMessages{Messages: msgs}, nil
+	}
+
+	progress := func(ProgressUpdate) {
+		close(stop)
+	}
+
+	got, err := client.fetchMessages(
+		context.Background(),
+		progress,
+		"test-phase",
+		time.Time{},
+		false,
+		fetch,
+		func(*tg.Message) (bool, bool) { return true, false },
+		MessageFetchOptions{Stop: stop},
+	)
+	if err != nil {
+		t.Fatalf("fetchMessages error: %v", err)
+	}
+	if !got.Stopped {
+		t.Fatal("expected stopped result")
+	}
+	if len(got.Messages) != 100 {
+		t.Fatalf("expected first page messages, got %d", len(got.Messages))
+	}
+	if callCount != 1 {
+		t.Fatalf("expected 1 fetch call, got %d", callCount)
+	}
+}
+
+func TestFetchMessagesForward_PaginatesFromOldestUnread(t *testing.T) {
+	client := &Client{}
+	callCount := 0
+	var seenOffsets []int
+	var seenAddOffsets []int
+
+	fetch := func(offsetID, addOffset, limit int) (tg.MessagesMessagesClass, error) {
+		callCount++
+		seenOffsets = append(seenOffsets, offsetID)
+		seenAddOffsets = append(seenAddOffsets, addOffset)
+		switch callCount {
+		case 1:
+			msgs := make([]tg.MessageClass, 0, limit)
+			for i := 0; i < limit; i++ {
+				id := 200 - i
+				msgs = append(msgs, &tg.Message{ID: id, Date: id, Message: "a"})
+			}
+			return &tg.MessagesMessages{Messages: msgs}, nil
+		case 2:
+			return &tg.MessagesMessages{
+				Messages: []tg.MessageClass{
+					&tg.Message{ID: 202, Date: 202, Message: "c"},
+					&tg.Message{ID: 201, Date: 201, Message: "b"},
+				},
+			}, nil
+		default:
+			return &tg.MessagesMessages{Messages: nil}, nil
+		}
+	}
+
+	got, err := client.fetchMessagesForward(
+		context.Background(),
+		nil,
+		"unread",
+		100,
+		fetch,
+		func(*tg.Message) (bool, bool) { return true, false },
+		MessageFetchOptions{},
+	)
+	if err != nil {
+		t.Fatalf("fetchMessagesForward error: %v", err)
+	}
+	if callCount != 2 {
+		t.Fatalf("expected 2 fetch calls, got %d", callCount)
+	}
+	if len(seenOffsets) != 2 || seenOffsets[0] != 100 || seenOffsets[1] != 200 {
+		t.Fatalf("unexpected offsets: %v", seenOffsets)
+	}
+	if len(seenAddOffsets) != 2 || seenAddOffsets[0] != -100 || seenAddOffsets[1] != -100 {
+		t.Fatalf("unexpected add offsets: %v", seenAddOffsets)
+	}
+	if len(got.Messages) != 102 {
+		t.Fatalf("expected 102 messages, got %d", len(got.Messages))
+	}
+	if got.Messages[0].ID != 101 || got.Messages[99].ID != 200 || got.Messages[100].ID != 201 || got.Messages[101].ID != 202 {
+		t.Fatalf("messages are not in read order: first=%d page1last=%d page2first=%d last=%d",
+			got.Messages[0].ID,
+			got.Messages[99].ID,
+			got.Messages[100].ID,
+			got.Messages[101].ID,
+		)
+	}
+}
+
+func TestFetchMessagesForward_StoppedResultIsSafeToMarkRead(t *testing.T) {
+	client := &Client{}
+	stop := make(chan struct{})
+
+	fetch := func(_ int, _ int, _ int) (tg.MessagesMessagesClass, error) {
+		return &tg.MessagesMessages{
+			Messages: []tg.MessageClass{
+				&tg.Message{ID: 102, Date: 200, Message: "b"},
+				&tg.Message{ID: 101, Date: 100, Message: "a"},
+			},
+		}, nil
+	}
+	progress := func(ProgressUpdate) {
+		close(stop)
+	}
+
+	got, err := client.fetchMessagesForward(
+		context.Background(),
+		progress,
+		"unread",
+		100,
+		fetch,
+		func(*tg.Message) (bool, bool) { return true, false },
+		MessageFetchOptions{Stop: stop},
+	)
+	if err != nil {
+		t.Fatalf("fetchMessagesForward error: %v", err)
+	}
+	if !got.Stopped {
+		t.Fatal("expected stopped result")
+	}
+	if !got.PartialReadSafe {
+		t.Fatal("expected stopped forward result to be safe for mark-as-read")
+	}
+	if len(got.Messages) != 2 || got.Messages[0].ID != 101 || got.Messages[1].ID != 102 {
+		t.Fatalf("unexpected messages: %+v", got.Messages)
 	}
 }
 

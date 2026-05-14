@@ -10,7 +10,7 @@ import (
 type fetchPlan struct {
 	progressTitle string
 	displayTitle  string
-	fetch         func(context.Context, telegram.ProgressFunc) (telegram.MessageFetchResult, error)
+	fetch         func(context.Context, telegram.ProgressFunc, <-chan struct{}) (telegram.MessageFetchResult, error)
 }
 
 func (a *App) buildFetchPlan(selectedChat telegram.Chat, selectedTopic *telegram.Topic, opts RunOptions) (fetchPlan, error) {
@@ -23,9 +23,10 @@ func (a *App) buildFetchPlan(selectedChat telegram.Chat, selectedTopic *telegram
 			return fetchPlan{
 				progressTitle: progressTitle,
 				displayTitle:  selectedChat.Title + " - " + selectedTopic.Title,
-				fetch: func(ctx context.Context, progress telegram.ProgressFunc) (telegram.MessageFetchResult, error) {
+				fetch: func(ctx context.Context, progress telegram.ProgressFunc, stop <-chan struct{}) (telegram.MessageFetchResult, error) {
 					return a.tgClient.GetTopicMessagesByDateWithOptions(ctx, selectedChat.ID, selectedTopic.ID, opts.Since, opts.Until, progress, telegram.MessageFetchOptions{
 						MessageLimit: opts.MessageLimit,
+						Stop:         stop,
 					})
 				},
 			}, nil
@@ -34,9 +35,10 @@ func (a *App) buildFetchPlan(selectedChat telegram.Chat, selectedTopic *telegram
 		return fetchPlan{
 			progressTitle: progressTitle,
 			displayTitle:  selectedChat.Title + " - " + selectedTopic.Title,
-			fetch: func(ctx context.Context, progress telegram.ProgressFunc) (telegram.MessageFetchResult, error) {
+			fetch: func(ctx context.Context, progress telegram.ProgressFunc, stop <-chan struct{}) (telegram.MessageFetchResult, error) {
 				return a.tgClient.GetTopicMessagesWithOptions(ctx, selectedChat.ID, selectedTopic.ID, selectedTopic.LastReadID, progress, telegram.MessageFetchOptions{
 					MessageLimit: opts.MessageLimit,
+					Stop:         stop,
 				})
 			},
 		}, nil
@@ -47,9 +49,10 @@ func (a *App) buildFetchPlan(selectedChat telegram.Chat, selectedTopic *telegram
 		return fetchPlan{
 			progressTitle: progressTitle,
 			displayTitle:  selectedChat.Title,
-			fetch: func(ctx context.Context, progress telegram.ProgressFunc) (telegram.MessageFetchResult, error) {
+			fetch: func(ctx context.Context, progress telegram.ProgressFunc, stop <-chan struct{}) (telegram.MessageFetchResult, error) {
 				return a.tgClient.GetMessagesByDateWithOptions(ctx, selectedChat.ID, opts.Since, opts.Until, progress, telegram.MessageFetchOptions{
 					MessageLimit: opts.MessageLimit,
+					Stop:         stop,
 				})
 			},
 		}, nil
@@ -58,9 +61,10 @@ func (a *App) buildFetchPlan(selectedChat telegram.Chat, selectedTopic *telegram
 	return fetchPlan{
 		progressTitle: progressTitle,
 		displayTitle:  selectedChat.Title,
-		fetch: func(ctx context.Context, progress telegram.ProgressFunc) (telegram.MessageFetchResult, error) {
+		fetch: func(ctx context.Context, progress telegram.ProgressFunc, stop <-chan struct{}) (telegram.MessageFetchResult, error) {
 			return a.tgClient.GetUnreadMessagesWithOptions(ctx, selectedChat.ID, selectedChat.LastReadID, progress, telegram.MessageFetchOptions{
 				MessageLimit: opts.MessageLimit,
+				Stop:         stop,
 			})
 		},
 	}, nil

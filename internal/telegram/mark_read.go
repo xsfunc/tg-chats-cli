@@ -12,6 +12,11 @@ func (c *Client) MarkAsRead(ctx context.Context, chat Chat, maxID int) error {
 	if inputPeer == nil {
 		return fmt.Errorf("peer %d not found", chat.ID)
 	}
+	if c.historyPacer != nil {
+		if err := c.historyPacer.Wait(ctx, nil); err != nil {
+			return fmt.Errorf("mark-as-read request pause: %w", err)
+		}
+	}
 
 	if chat.IsChannel {
 		inputChannel, ok := inputPeer.(*tg.InputPeerChannel)
@@ -29,6 +34,9 @@ func (c *Client) MarkAsRead(ctx context.Context, chat Chat, maxID int) error {
 		if err != nil {
 			return fmt.Errorf("failed to mark channel as read: %w", err)
 		}
+		if c.historyPacer != nil {
+			c.historyPacer.RecordSuccess()
+		}
 	} else {
 		_, err := c.ctx.Raw.MessagesReadHistory(ctx, &tg.MessagesReadHistoryRequest{
 			Peer:  inputPeer,
@@ -36,6 +44,9 @@ func (c *Client) MarkAsRead(ctx context.Context, chat Chat, maxID int) error {
 		})
 		if err != nil {
 			return fmt.Errorf("failed to mark chat as read: %w", err)
+		}
+		if c.historyPacer != nil {
+			c.historyPacer.RecordSuccess()
 		}
 	}
 
@@ -47,6 +58,11 @@ func (c *Client) MarkTopicAsRead(ctx context.Context, chatID int64, topicID int,
 	if inputPeer == nil {
 		return fmt.Errorf("peer %d not found", chatID)
 	}
+	if c.historyPacer != nil {
+		if err := c.historyPacer.Wait(ctx, nil); err != nil {
+			return fmt.Errorf("mark-topic-as-read request pause: %w", err)
+		}
+	}
 
 	_, err := c.ctx.Raw.MessagesReadDiscussion(ctx, &tg.MessagesReadDiscussionRequest{
 		Peer:      inputPeer,
@@ -55,6 +71,9 @@ func (c *Client) MarkTopicAsRead(ctx context.Context, chatID int64, topicID int,
 	})
 	if err != nil {
 		return fmt.Errorf("failed to mark topic as read: %w", err)
+	}
+	if c.historyPacer != nil {
+		c.historyPacer.RecordSuccess()
 	}
 
 	return nil

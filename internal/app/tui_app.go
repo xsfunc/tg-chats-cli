@@ -158,6 +158,11 @@ func (m appModel) Update(msg tea.Msg) (tea.Model, tea.Cmd) {
 		return m, cmd
 
 	case stateProgress:
+		if isStopKey(msg) {
+			m.stopFetch()
+			m.progress = m.progress.StopRequested()
+			return m, nil
+		}
 		var cmd tea.Cmd
 		var updated tea.Model
 		updated, cmd = m.progress.Update(msg)
@@ -300,6 +305,13 @@ func (m *appModel) cancelFetch() {
 	m.fetchHandle = nil
 }
 
+func (m *appModel) stopFetch() {
+	if m.fetchHandle == nil {
+		return
+	}
+	m.fetchHandle.stop()
+}
+
 type forumMarkClient interface {
 	GetForumTopics(ctx context.Context, chatID int64) ([]telegram.Topic, error)
 	MarkTopicAsRead(ctx context.Context, chatID int64, topicID int, maxID int) error
@@ -354,4 +366,12 @@ func isCtrlC(msg tea.Msg) bool {
 		return true
 	}
 	return false
+}
+
+func isStopKey(msg tea.Msg) bool {
+	key, ok := msg.(tea.KeyMsg)
+	if !ok {
+		return false
+	}
+	return key.Type == tea.KeyRunes && len(key.Runes) == 1 && key.Runes[0] == 'q'
 }

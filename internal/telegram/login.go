@@ -69,7 +69,7 @@ func (c *Client) Login(ctx context.Context, input io.Reader) error {
 		AuthConversator: newTerminalAuthConversator(input, os.Stdout, authPromptActive, authPromptWake),
 		Middlewares: []gotdtelegram.Middleware{
 			newFloodWaitMiddleware(time.Duration(c.cfg.FloodWaitMaxSeconds)*time.Second, c.recordFloodWait),
-			ratelimit.New(rate.Every(time.Duration(c.cfg.RateLimitMs)*time.Millisecond), 3),
+			ratelimit.New(rate.Every(time.Duration(c.cfg.RateLimitMs)*time.Millisecond), 1),
 		},
 	}
 	if c.cfg.ProxyURL != "" {

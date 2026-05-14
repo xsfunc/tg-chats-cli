@@ -82,6 +82,7 @@ func (m ProgressModel) View() string {
 	lines := []string{
 		header,
 		infoStyle.Render(status),
+		helpStyle.Render("q: stop after request  ctrl+c: cancel"),
 	}
 	if m.phase != "" {
 		lines = append(lines, infoStyle.Render(statusBarStyle.Render(fmt.Sprintf("Phase: %s", m.phase))))
@@ -91,6 +92,11 @@ func (m ProgressModel) View() string {
 
 func (m ProgressModel) Done() bool {
 	return m.done
+}
+
+func (m ProgressModel) StopRequested() ProgressModel {
+	m.phase = "stopping after current request"
+	return m
 }
 
 func waitForProgress(ch <-chan tea.Msg) tea.Cmd {

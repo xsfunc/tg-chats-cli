@@ -19,6 +19,12 @@ func (c *Client) GetForumTopics(ctx context.Context, chatID int64) ([]Topic, err
 	offset := forumTopicOffset{}
 
 	for {
+		if c.historyPacer != nil {
+			if err := c.historyPacer.Wait(ctx, nil); err != nil {
+				return nil, fmt.Errorf("forum topics request pause: %w", err)
+			}
+		}
+
 		topics, err := c.ctx.Raw.MessagesGetForumTopics(ctx, &tg.MessagesGetForumTopicsRequest{
 			Peer:        inputPeer,
 			OffsetDate:  offset.date,
@@ -28,6 +34,9 @@ func (c *Client) GetForumTopics(ctx context.Context, chatID int64) ([]Topic, err
 		})
 		if err != nil {
 			return nil, fmt.Errorf("failed to get forum topics: %w", err)
+		}
+		if c.historyPacer != nil {
+			c.historyPacer.RecordSuccess()
 		}
 
 		result = appendForumTopics(result, seen, topics.Topics)

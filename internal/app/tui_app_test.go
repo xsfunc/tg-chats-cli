@@ -3,6 +3,7 @@ package app
 import (
 	"context"
 	"errors"
+	"strings"
 	"testing"
 
 	"tg-arc/internal/telegram"
@@ -25,6 +26,34 @@ func TestAppModel_TopicCancelReturnsToChatList(t *testing.T) {
 	m := updated.(appModel)
 	if m.state != stateChatList {
 		t.Errorf("expected stateChatList, got %v", m.state)
+	}
+}
+
+func TestAppModel_ProgressQStopsFetchWithoutQuitting(t *testing.T) {
+	stopped := false
+	model := appModel{
+		state: stateProgress,
+		fetchHandle: &fetchHandle{
+			stop: func() {
+				stopped = true
+			},
+		},
+	}
+
+	updated, cmd := model.Update(tea.KeyMsg{Type: tea.KeyRunes, Runes: []rune{'q'}})
+	if cmd != nil {
+		t.Error("expected no command for graceful stop")
+	}
+	if !stopped {
+		t.Fatal("expected fetch stop to be requested")
+	}
+
+	m := updated.(appModel)
+	if m.state != stateProgress {
+		t.Fatalf("expected stateProgress, got %v", m.state)
+	}
+	if !strings.Contains(m.progress.View(), "stopping after current request") {
+		t.Fatalf("expected stopping status, got %q", m.progress.View())
 	}
 }
 
