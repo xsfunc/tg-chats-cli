@@ -1,48 +1,78 @@
 # AGENTS.md
 
-## First Step
-- Read `README.md` first to understand the project goals, structure, and workflows before making changes.
+Self-contained routing and repository rules for LLM agents working on `tg-arc`.
 
-## Go Guidelines
-- Run gofmt on any Go code changes.
-- Prefer the standard library; avoid new third-party dependencies unless necessary.
+## Project Summary
+
+`tg-arc` is a Go CLI that logs in to Telegram with a user account, saves selected chat or forum-topic history into SQLite, syncs unread messages, marks saved unread ranges as read, and exports cached messages as Markdown. It does not call an LLM.
+
+Default paths:
+
+- Message DB: `data/tg-arc.db`
+- Telegram session DB: `session/session.db`
+
+## Routing
+
+- CLI flags, commands, argument validation: `cmd/tg-arc/`
+- App orchestration, history/sync behavior, mark-as-read: `internal/app/`
+- Telegram client, dialogs, topics, history fetch, flood wait handling: `internal/telegram/`
+- SQLite schema, migrations, account scoping, upserts, run metadata: `internal/store/`
+- Offline `chats` and `export` output: `internal/exporter/`
+- Bubble Tea chat/topic TUI, progress, summary screens: `internal/tui/`
+- Environment config: `internal/config/`
+- User docs: `docs/`; root `README.md` is only the entry point.
+
+## Architecture Invariants
+
+- Rows are scoped by `account_id`; several Telegram accounts may share one message DB.
+- Use a separate session file per Telegram account.
+- Unread `history` and `sync` mark messages as read only after successful SQLite writes.
+- Date range `history` never marks messages as read.
+- `sync` saves unread messages only and does not accept date ranges.
+- Forum `history --id` requires `--topic-id` or `--topic`; forum `sync --id` without topic flags syncs all unread topics.
+- `--id` accepts raw MTProto IDs and Bot API `-100...` IDs.
+- If `--message-limit` truncates unread messages, skip mark-as-read for that item and store a warning.
+- Offline commands (`chats`, `export`) must not require Telegram config or login.
+
+## Commands
+
+Use `mise`, not `make`.
+
+- `mise install`: install configured tools.
+- `mise dev -- <args>`: run via `go run ./cmd/tg-arc`.
+- `mise run build`: build `bin/tg-arc`.
+- `mise run lint`: run `golangci-lint`.
+- `mise run test`: run unit tests.
+- `mise run all`: tidy, lint, test, build.
+- `mise run setup-hooks`: enable local git hooks.
+
+## Go Rules
+
+- Run `gofmt` on changed Go files.
+- Prefer the standard library; avoid new dependencies unless clearly required.
+- Do not change public APIs unless explicitly requested.
 - Wrap errors with context using `fmt.Errorf("context: %w", err)`.
-- Do not change public APIs without explicit request.
-- Keep package layout consistent (`cmd/`, `internal/`, `pkg/`); place new code accordingly.
-- Be explicit about concurrency ownership: context cancellation, goroutine lifetimes, channel closure.
-- Handle immediately (`if err != nil`). Wrap errors with context. No `panic`.
-- Minimal nesting. Use guard clauses (return early).
-- Use `any` instead of `interface{}`. No naked returns in long functions.
-- Avoid global state and `init()` functions where possible.
-- Consider `sync.Pool` only for proven hot allocations.
+- Handle errors immediately; no `panic` for normal failures.
+- Use guard clauses and minimal nesting.
+- Use `any` instead of `interface{}`.
+- Avoid global state and `init()` where possible.
+- Be explicit about context cancellation, goroutine lifetimes, and channel closure.
 
-## Tests
-- If you add behavior, add or update a test when it is simple and nearby.
-- Prefer table-driven tests; avoid flaky tests and `time.Sleep` unless necessary.
+## Tests And Docs
 
-## Dependencies
-- Do not add new dependencies without a clear need and a brief justification.
-- Do not change `go.mod` or `go.sum` unless required by the change.
+- If behavior changes, add or update a nearby test when practical.
+- Prefer table-driven tests; avoid flaky waits and `time.Sleep` unless necessary.
+- Run at least one relevant verification step; run `mise run lint` after code changes.
+- Update docs under `docs/` when behavior, flags, setup, or structure changes.
+- Keep root `README.md` short and avoid duplicating detailed docs there.
 
-## Git (Local)
-- Commit directly to `main`.
-- Make small, frequent commits; use `git add <files>` by default and `git add -p` only when you need to split changes.
+## Git Rules
+
+- Commit directly to `main` when asked to commit.
+- Use Conventional Commits: `type(scope): summary`.
 - Before confirming changes, check `git status -sb`, `git diff`, and `git diff --staged`.
-- For quick rollback, prefer `git restore --staged .` and `git restore .`.
-- Use Conventional Commits: `type(scope): summary` (e.g., `feat(cli): add --json output`).
-- After implementing code changes, run `mise run lint`.
+- Do not revert unrelated user changes. Current untracked or unrelated files should be called out, not removed.
 
-## Docs
-- After completing a task and running tests/lint, update `README.md` to reflect any new functionality or structure changes.
-- If task changes behavior, update documentation to reflect the new behavior.
+## CI And Releases
 
-## Definition of Done
-- At least one relevant test or verification step was run.
-- Documentation reflects behavior/structure changes.
-- `git status -sb` is clean, or known unrelated local changes are called out.
-
-## Tooling
-- Use `mise` instead of `make` for tasks.
-- Use `mise` for tool management.
-- Provide short `mise` tasks for build, test, and lint.
-- Consider pre-commit hooks for `gofmt` and a fast `go test` subset.
+GitHub Actions must use `actions/checkout@v6`, `actions/cache@v5`, and `jdx/mise-action@v4`. Release tags `v*` build Linux `x64` and `arm64` archives for GitHub Releases and mise's GitHub backend.
