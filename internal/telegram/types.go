@@ -73,13 +73,16 @@ type DialogsResult struct {
 
 type MessageFetchOptions struct {
 	MessageLimit int
+	Stop         <-chan struct{}
 }
 
 type MessageFetchResult struct {
-	Messages  []Message
-	Users     []User
-	Chats     []Chat
-	Truncated bool
+	Messages        []Message
+	Users           []User
+	Chats           []Chat
+	Truncated       bool
+	Stopped         bool
+	PartialReadSafe bool
 }
 
 type ProgressUpdate struct {
@@ -97,8 +100,8 @@ func reportProgress(progress ProgressFunc, update ProgressUpdate) {
 	}
 }
 
-func (c *Client) recordFloodWait(time.Duration) {
+func (c *Client) recordFloodWait(d time.Duration) {
 	if c.historyPacer != nil {
-		c.historyPacer.RecordFloodWait()
+		c.historyPacer.RecordFloodWaitDuration(d)
 	}
 }

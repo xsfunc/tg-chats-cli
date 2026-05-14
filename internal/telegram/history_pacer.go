@@ -11,8 +11,11 @@ import (
 )
 
 const (
-	maxHistoryBackoffLevel = 2
-	successesToReduceDelay = 10
+	maxHistoryBackoffLevel = 5
+	successesToReduceDelay = 5
+	// longFloodWaitThreshold is the flood-wait duration above which the backoff
+	// level is immediately set to the maximum instead of incrementing by one.
+	longFloodWaitThreshold = 60 * time.Second
 )
 
 type sleepFunc func(context.Context, time.Duration) error
@@ -107,12 +110,27 @@ func (p *historyPacer) RecordSuccess() {
 	}
 }
 
-func (p *historyPacer) RecordFloodWait() {
+// RecordFloodWaitDuration records a flood wait with its actual duration and
+// adjusts the backoff level accordingly. For waits >= longFloodWaitThreshold
+// the level is immediately set to the maximum, signalling a severe rate-limit
+// response from Telegram. Shorter waits increment the level by one as usual.
+func (p *historyPacer) RecordFloodWaitDuration(d time.Duration) {
 	p.mu.Lock()
 	defer p.mu.Unlock()
 
+	p.successes = 0
+	if d >= longFloodWaitThreshold {
+		p.backoffLevel = maxHistoryBackoffLevel
+		return
+	}
 	if p.backoffLevel < maxHistoryBackoffLevel {
 		p.backoffLevel++
 	}
-	p.successes = 0
+}
+
+// RecordFloodWait records a generic flood wait and increments the backoff
+// level by one. Use RecordFloodWaitDuration when the actual wait duration
+// is available.
+func (p *historyPacer) RecordFloodWait() {
+	p.RecordFloodWaitDuration(0)
 }

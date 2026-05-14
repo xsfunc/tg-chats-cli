@@ -7,6 +7,14 @@ import (
 	"strconv"
 )
 
+// Minimum safe values that cannot be overridden by environment variables.
+// These floors prevent accidental removal of rate-limiting protection while
+// still allowing users to tune performance within a reasonable range.
+const (
+	minRateLimitMs    = 50  // ~20 req/s global ceiling
+	minHistoryDelayMs = 500 // minimum inter-request pause for history/dialog calls
+)
+
 // Config holds the application configuration.
 type Config struct {
 	TelegramAppID                 int
@@ -57,6 +65,9 @@ func Load() (*Config, error) {
 	if rateLimit <= 0 {
 		rateLimit = 350
 	}
+	if rateLimit < minRateLimitMs {
+		rateLimit = minRateLimitMs
+	}
 
 	connectTimeout := intEnv("TG_CONNECT_TIMEOUT_SECONDS", 60)
 	if connectTimeout < 0 {
@@ -70,6 +81,12 @@ func Load() (*Config, error) {
 	}
 	if historyDelayMax <= 0 {
 		historyDelayMax = 4000
+	}
+	if historyDelayMin < minHistoryDelayMs {
+		historyDelayMin = minHistoryDelayMs
+	}
+	if historyDelayMax < minHistoryDelayMs {
+		historyDelayMax = minHistoryDelayMs
 	}
 	if historyDelayMin > historyDelayMax {
 		historyDelayMin, historyDelayMax = historyDelayMax, historyDelayMin

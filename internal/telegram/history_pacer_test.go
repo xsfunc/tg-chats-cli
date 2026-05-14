@@ -48,20 +48,22 @@ func TestHistoryPacerBackoffIncreasesDelayRange(t *testing.T) {
 		return nil
 	}
 
-	pacer.RecordFloodWait()
-	if err := pacer.Wait(context.Background(), nil); err != nil {
-		t.Fatalf("Wait level 1 error: %v", err)
-	}
-	pacer.RecordFloodWait()
-	if err := pacer.Wait(context.Background(), nil); err != nil {
-		t.Fatalf("Wait level 2 error: %v", err)
-	}
-	pacer.RecordFloodWait()
-	if err := pacer.Wait(context.Background(), nil); err != nil {
-		t.Fatalf("Wait capped level error: %v", err)
+	// Drive the pacer from level 0 through 5 (max), then verify it is capped.
+	// With base min=2s and rand=0 the sleep equals min*2^level.
+	levels := maxHistoryBackoffLevel + 1 // one extra to verify cap
+	for i := 0; i < levels; i++ {
+		pacer.RecordFloodWait()
+		if err := pacer.Wait(context.Background(), nil); err != nil {
+			t.Fatalf("Wait level %d error: %v", i+1, err)
+		}
 	}
 
-	want := []time.Duration{4 * time.Second, 8 * time.Second, 8 * time.Second}
+	// Expected min delays: 2s * 2^1=4, *4=8, *8=16, *16=32, *32=64, *32=64 (capped)
+	want := make([]time.Duration, levels)
+	for i := range want {
+		factor := 1 << min(i+1, maxHistoryBackoffLevel)
+		want[i] = time.Duration(factor) * 2 * time.Second
+	}
 	if len(slept) != len(want) {
 		t.Fatalf("unexpected sleep count: got %d want %d", len(slept), len(want))
 	}
@@ -123,5 +125,56 @@ func TestHistoryPacerWaitHonorsContextCancellation(t *testing.T) {
 	err := pacer.Wait(ctx, nil)
 	if !errors.Is(err, context.Canceled) {
 		t.Fatalf("expected context.Canceled, got %v", err)
+	}
+}
+
+func TestHistoryPacerLongFloodWaitSetsMaxBackoff(t *testing.T) {
+	pacer := newHistoryPacer(&config.Config{
+		HistoryDelayMinMs: 2000,
+		HistoryDelayMaxMs: 4000,
+	})
+	pacer.rand = func(int) int { return 0 }
+
+	var slept []time.Duration
+	pacer.sleep = func(_ context.Context, d time.Duration) error {
+		slept = append(slept, d)
+		return nil
+	}
+
+	// A flood wait >= longFloodWaitThreshold must jump straight to maximum backoff.
+	pacer.RecordFloodWaitDuration(5 * time.Minute)
+	if err := pacer.Wait(context.Background(), nil); err != nil {
+		t.Fatalf("Wait error: %v", err)
+	}
+
+	// max level = 5, factor = 2^5 = 32, min delay = 2s * 32 = 64s
+	want := time.Duration(1<<maxHistoryBackoffLevel) * 2 * time.Second
+	if len(slept) != 1 || slept[0] != want {
+		t.Fatalf("expected sleep %v after long flood wait, got %v", want, slept)
+	}
+}
+
+func TestHistoryPacerShortFloodWaitIncrementsLevelByOne(t *testing.T) {
+	pacer := newHistoryPacer(&config.Config{
+		HistoryDelayMinMs: 2000,
+		HistoryDelayMaxMs: 4000,
+	})
+	pacer.rand = func(int) int { return 0 }
+
+	var slept []time.Duration
+	pacer.sleep = func(_ context.Context, d time.Duration) error {
+		slept = append(slept, d)
+		return nil
+	}
+
+	// A flood wait below the threshold increments by exactly one level.
+	pacer.RecordFloodWaitDuration(30 * time.Second)
+	if err := pacer.Wait(context.Background(), nil); err != nil {
+		t.Fatalf("Wait error: %v", err)
+	}
+
+	// level 1: min delay = 2s * 2 = 4s
+	if len(slept) != 1 || slept[0] != 4*time.Second {
+		t.Fatalf("expected sleep 4s after short flood wait, got %v", slept)
 	}
 }

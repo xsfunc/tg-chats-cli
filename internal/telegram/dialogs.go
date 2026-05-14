@@ -32,6 +32,12 @@ func (c *Client) GetDialogsWithEntities(ctx context.Context) (DialogsResult, err
 	offsetDate := 0
 
 	for {
+		if c.historyPacer != nil {
+			if err := c.historyPacer.Wait(ctx, nil); err != nil {
+				return DialogsResult{}, fmt.Errorf("dialog request pause: %w", err)
+			}
+		}
+
 		dialogs, err := c.ctx.Raw.MessagesGetDialogs(ctx, &tg.MessagesGetDialogsRequest{
 			Limit:      limit,
 			OffsetPeer: offsetPeer,
@@ -41,14 +47,19 @@ func (c *Client) GetDialogsWithEntities(ctx context.Context) (DialogsResult, err
 		if err != nil {
 			return DialogsResult{}, fmt.Errorf("failed to get dialogs: %w", err)
 		}
+		if c.historyPacer != nil {
+			c.historyPacer.RecordSuccess()
+		}
 
 		var batch []Chat
 		var lastDialog *tg.Dialog
+		var lastMessages []tg.MessageClass
 
 		switch d := dialogs.(type) {
 		case *tg.MessagesDialogsSlice:
 			batch = c.processDialogs(d.Dialogs, d.Chats, d.Users)
 			users = appendUsers(users, seenUsers, d.Users)
+			lastMessages = d.Messages
 			if len(d.Dialogs) > 0 {
 				if dlg, ok := d.Dialogs[len(d.Dialogs)-1].(*tg.Dialog); ok {
 					lastDialog = dlg
@@ -57,6 +68,7 @@ func (c *Client) GetDialogsWithEntities(ctx context.Context) (DialogsResult, err
 		case *tg.MessagesDialogs:
 			batch = c.processDialogs(d.Dialogs, d.Chats, d.Users)
 			users = appendUsers(users, seenUsers, d.Users)
+			lastMessages = d.Messages
 			if len(d.Dialogs) > 0 {
 				if dlg, ok := d.Dialogs[len(d.Dialogs)-1].(*tg.Dialog); ok {
 					lastDialog = dlg
@@ -84,9 +96,14 @@ func (c *Client) GetDialogsWithEntities(ctx context.Context) (DialogsResult, err
 		if nextPeer == nil {
 			break
 		}
+		nextOffsetDate := messageDateByID(lastMessages, lastDialog.TopMessage)
+		if nextOffsetDate == 0 {
+			// Cannot determine the pagination date; stop to avoid an incorrect offset.
+			break
+		}
 		offsetPeer = nextPeer
 		offsetID = lastDialog.TopMessage
-		offsetDate = 0
+		offsetDate = nextOffsetDate
 	}
 
 	sort.Slice(parsedDialogs, func(i, j int) bool {

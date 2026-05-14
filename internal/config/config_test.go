@@ -234,6 +234,40 @@ func TestLoad_InvalidSafetyLimitsFallBackToDefaults(t *testing.T) {
 	}
 }
 
+func TestLoad_ClampsRateLimitToMinimum(t *testing.T) {
+	setEnv(t, "TG_APP_ID", "12345")
+	setEnv(t, "TG_APP_HASH", "testhash")
+	setEnv(t, "RATE_LIMIT_MS", "10") // positive but below minRateLimitMs (50)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.RateLimitMs != minRateLimitMs {
+		t.Errorf("expected RateLimitMs clamped to %d, got %d", minRateLimitMs, cfg.RateLimitMs)
+	}
+}
+
+func TestLoad_ClampsHistoryDelaysToMinimum(t *testing.T) {
+	setEnv(t, "TG_APP_ID", "12345")
+	setEnv(t, "TG_APP_HASH", "testhash")
+	setEnv(t, "HISTORY_DELAY_MIN_MS", "50")  // positive but below minHistoryDelayMs (500)
+	setEnv(t, "HISTORY_DELAY_MAX_MS", "100") // positive but below minHistoryDelayMs (500)
+
+	cfg, err := Load()
+	if err != nil {
+		t.Fatalf("unexpected error: %v", err)
+	}
+
+	if cfg.HistoryDelayMinMs != minHistoryDelayMs {
+		t.Errorf("expected HistoryDelayMinMs clamped to %d, got %d", minHistoryDelayMs, cfg.HistoryDelayMinMs)
+	}
+	if cfg.HistoryDelayMaxMs != minHistoryDelayMs {
+		t.Errorf("expected HistoryDelayMaxMs clamped to %d, got %d", minHistoryDelayMs, cfg.HistoryDelayMaxMs)
+	}
+}
+
 func TestLoad_SwapsReversedHistoryDelayRange(t *testing.T) {
 	setEnv(t, "TG_APP_ID", "12345")
 	setEnv(t, "TG_APP_HASH", "testhash")
